@@ -1,0 +1,98 @@
+body {
+  background: #fff url("../img/gradient.png") repeat-x;
+  margin: 0 auto;
+  font-family: sans-serif;
+  font-size: 12px;
+  padding: 0 2em;
+  color: #000;
+}
+
+#container {
+  width: 650px;
+  margin-top: 25px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#lastupdate {
+  text-align: right;
+  margin: 0;
+  padding: 0;
+}
+
+h1 {
+  background: url("../img/h1_header.png") no-repeat center;
+  border-top: 1px dotted #ccc;
+  line-height: 1.2em;
+  font-size: 2em;
+  padding: 1.5em;
+  margin-top: 0;
+  text-align: left;
+}
+
+h1, h2, h3 {
+  color: #333;
+}
+
+hr {
+  border-top: 1px dotted #333;
+  border-bottom: 0 none;
+}
+
+a:link {
+  color: #555;
+  text-decoration: none;
+}
+
+a:visited {
+  color: #555;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #339900;
+  text-decoration: underline;
+}
+
+.hotpotato {
+  color: #339900;
+  font-weight: bold;
+}
+
+.text {
+  color: #000;
+}
+
+ul {
+  padding-left: 25px;
+}
+
+li {
+  margin: 5px;
+  list-style: square;
+  color: #339900;
+}
+
+tt, tt *, pre, pre *, code, code * {
+    font-family: "Liberation Mono", "DejaVu Sans Mono", Consolas, Monaco, "Vera Sans Mono", "Lucida Console", "Courier New", monospace;
+}
+
+p {
+  margin-left: 10px;
+}
+
+pre {
+  border: 1px solid #ccc;
+  padding: 5px 20px;
+  color: #333;
+  background-color: #f5f5f5;
+  border-radius: 11px;
+  -webkit-border-radius: 11px;
+  -moz-border-radius: 11px;
+}
+
+#footer {
+  width: 100%;
+  margin: 10px;
+  text-align: center;
+}

@@ -1,0 +1,175 @@
+/* Javadoc style sheet */
+
+/* Define colors, fonts and other style attributes here to override the defaults */
+
+/* Page background color */
+body {
+    background: #fff url("resources/gradient.png") repeat-x;
+    margin: 0 auto;
+    font-family: sans-serif;
+    font-size: 12px;
+    padding: 0 2em;
+    color: #000;
+}
+
+/* Common elements */
+
+font {
+    font-size: inherit;
+    color: inherit;
+    font-weight: inherit;
+}
+
+hr {
+    border-top: 1px dotted #eee;
+    border-bottom: 0 none;
+}
+
+tt, tt *, pre, pre *, code, code * {
+    font-family: "Liberation Mono", "DejaVu Sans Mono", Consolas, Monaco, "Vera Sans Mono", "Lucida Console", "Courier New", monospace;
+}
+
+a:link {
+    color: #555;
+    text-decoration: none;
+}
+
+a:visited {
+    color: #555;
+    text-decoration: none;
+}
+
+a:hover {
+    color: #339900;
+    text-decoration: underline;
+}
+
+/* Headings */
+h1 {
+    background: url("resources/h1_header.png") no-repeat;
+    border-top: 1px dotted #ccc;
+    line-height: 1.2em;
+    color: #333;
+    font-size: 2em;
+    padding: 1.5em;
+    margin-top: 0;
+    text-align: left;
+}
+
+/* Default Table elements and colors */
+
+th, table {
+    border-collapse: collapse;
+    border-color: #eee;
+}
+
+.TableHeadingColor {
+    background: #000 url("resources/table_header.png") repeat-x scroll left top;
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+    height: 31px;
+    text-align: left;
+    padding: 1.5em;
+}
+
+.TableHeadingColor th {
+    padding-left: 10px;
+}
+
+.TableSubHeadingColor {
+    background: #eee;
+}
+
+/* Light mauve */
+.TableRowColor {
+    background: #fff;
+    border-color: #eee;
+}
+
+.TableRowColor td {
+    line-height: 175%;
+    padding-left: 10px;
+}
+
+/* Font used in left-hand frame lists */
+.FrameTitleFont {
+    font-weight: bold;
+    margin-top: 1em;
+    display: block;
+}
+
+.FrameHeadingFont {
+    font-weight: bold;
+    margin-top: 1em;
+    display: block;
+}
+
+.FrameItemFont {
+    font-size: 100%;
+}
+
+/* Navigation bar fonts and colors */
+
+.NavBarCell1 {
+    background: #fff url("resources/nav_header.png") repeat-x scroll left top;
+    line-height: 2em;
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+.NavBarFont1 {
+    color: white;
+}
+
+.NavBarCell1 a {
+    color: white;
+}
+
+.NavBarCell1Rev {
+    background-color: #fff;
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+.NavBarFont1 {
+    color: #fff;
+}
+
+.NavBarFont1Rev {
+    color: #333;
+}
+
+.NavBarCell2 {
+    background-color: #fff;
+}
+
+.NavBarCell3 {
+    background-color: #fff;
+}
+
+.note {
+    border: 1px dotted #333;
+    margin: 15px;
+    background-color: #ddd;
+    padding: 10px;
+}
+
+.note .header {
+    background: url("resources/warning_24.png") no-repeat;
+    margin: 0 0 10px;
+    padding: 2px 2px 2px 30px;
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+pre.code {
+    border: 1px dotted #aaa;
+    margin: 15px;
+    padding: 10px;
+    background-color: #eee;
+}
+
+em {
+    color: #666;
+}
