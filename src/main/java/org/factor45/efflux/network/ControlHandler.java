@@ -1,6 +1,6 @@
 package org.factor45.efflux.network;
 
-import org.factor45.efflux.ControlPacketReceiver;
+import org.factor45.efflux.session.ControlPacketReceiver;
 import org.factor45.efflux.packet.RtcpPacket;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.MessageEvent;
@@ -30,7 +30,7 @@ public class ControlHandler extends SimpleChannelUpstreamHandler {
     @Override
     public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
         if (e.getMessage() instanceof RtcpPacket) {
-            this.receiver.controlPacketReceived((RtcpPacket) e.getMessage(), e.getRemoteAddress());
+            this.receiver.controlPacketReceived(e.getRemoteAddress(), (RtcpPacket) e.getMessage());
         }
     }
     

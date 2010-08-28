@@ -75,7 +75,7 @@ public class RtpPacket {
         // Marker, Payload Type
         b = buffer.readByte();
         packet.marker = (b & 0x80) > 0; // mask 0000 0001
-        packet.payloadType = b & 0x7f; // mask 0111 1111
+        packet.payloadType = (b & 0x7f); // mask 0111 1111
 
         packet.sequenceNumber = buffer.readShort();
         packet.timestamp = buffer.readInt();

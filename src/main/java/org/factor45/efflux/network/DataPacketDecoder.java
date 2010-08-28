@@ -1,5 +1,6 @@
 package org.factor45.efflux.network;
 
+import org.factor45.efflux.logging.Logger;
 import org.factor45.efflux.packet.RtpPacket;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
@@ -15,7 +16,7 @@ public class DataPacketDecoder extends OneToOneDecoder {
 
     // constants ------------------------------------------------------------------------------------------------------
 
-    protected static final InternalLogger LOG = InternalLoggerFactory.getInstance(OneToOneDecoder.class);
+    protected static final Logger LOG = Logger.getLogger(OneToOneDecoder.class);
 
     // OneToOneDecoder ------------------------------------------------------------------------------------------------
 

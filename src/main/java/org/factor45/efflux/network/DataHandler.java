@@ -1,6 +1,6 @@
 package org.factor45.efflux.network;
 
-import org.factor45.efflux.DataPacketReceiver;
+import org.factor45.efflux.session.DataPacketReceiver;
 import org.factor45.efflux.packet.RtpPacket;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.MessageEvent;
@@ -30,7 +30,7 @@ public class DataHandler extends SimpleChannelUpstreamHandler {
     @Override
     public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
         if (e.getMessage() instanceof RtpPacket) {
-            this.receiver.dataPacketReceived((RtpPacket) e.getMessage(), e.getRemoteAddress());
+            this.receiver.dataPacketReceived(e.getRemoteAddress(), (RtpPacket) e.getMessage());
         }
     }
     

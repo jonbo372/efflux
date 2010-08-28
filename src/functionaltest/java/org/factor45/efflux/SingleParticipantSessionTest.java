@@ -1,6 +1,10 @@
 package org.factor45.efflux;
 
 import org.factor45.efflux.packet.RtpPacket;
+import org.factor45.efflux.session.RtpParticipant;
+import org.factor45.efflux.session.RtpSession;
+import org.factor45.efflux.session.RtpSessionDataListener;
+import org.factor45.efflux.session.SingleParticipantSession;
 import org.junit.After;
 import org.junit.Test;
 
@@ -32,23 +36,25 @@ public class SingleParticipantSessionTest {
     public void testSendAndReceive() {
         final CountDownLatch latch = new CountDownLatch(2);
 
-        Participant p1 = new Participant("127.0.0.1", 7000, 7001);
-        this.session1 = new SingleParticipantSession("Session1", 6000, 6001, p1);
+        RtpParticipant local1 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
+        RtpParticipant remote1 = new RtpParticipant("127.0.0.1", 7000, 7001, 2);
+        this.session1 = new SingleParticipantSession("Session1", 8, local1, remote1);
         assertTrue(this.session1.init());
-        this.session1.addListener(new RtpSessionListener() {
+        this.session1.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
                 System.err.println("Session 1 received packet: " + packet + "(session: " + session.getId() + ")");
                 latch.countDown();
             }
         });
 
-        Participant p2 = new Participant("127.0.0.1", 6000, 6001);
-        this.session2 = new SingleParticipantSession("Session2", 7000, 7001, p2);
+        RtpParticipant local2 = new RtpParticipant("127.0.0.1", 7000, 7001, 2);
+        RtpParticipant remote2 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
+        this.session2 = new SingleParticipantSession("Session2", 8, local2, remote2);
         assertTrue(this.session2.init());
-        this.session2.addListener(new RtpSessionListener() {
+        this.session2.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
                 System.err.println("Session 2 received packet: " + packet + "(session: " + session.getId() + ")");
                 latch.countDown();
             }
@@ -74,31 +80,33 @@ public class SingleParticipantSessionTest {
         final CountDownLatch latch2 = new CountDownLatch(1);
         String initialHost;
 
-        Participant p1 = new Participant("127.0.0.1", 7000, 7001);
-        this.session1 = new SingleParticipantSession("Session1", 6000, 6001, p1);
+        RtpParticipant local1 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
+        RtpParticipant remote1 = new RtpParticipant("127.0.0.1", 7000, 7001, 2);
+        this.session1 = new SingleParticipantSession("Session1", 8, local1, remote1);
         assertTrue(this.session1.init());
-        this.session1.addListener(new RtpSessionListener() {
+        this.session1.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
                 System.err.println("Session 1 received packet: " + packet + "(session: " + session.getId() + ")");
                 latch2.countDown();
             }
         });
 
-        Participant p2 = new Participant("127.0.0.1", 9000, 9001);
-        this.session2 = new SingleParticipantSession("Session2", 7000, 7001, p2);
+        RtpParticipant local2 = new RtpParticipant("127.0.0.1", 7000, 7001, 2);
+        RtpParticipant remote2 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
+        this.session2 = new SingleParticipantSession("Session2", 8, local2, remote2);
         assertTrue(this.session2.init());
-        this.session2.addListener(new RtpSessionListener() {
+        this.session2.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
                 System.err.println("Session 2 received packet: " + packet + "(session: " + session.getId() + ")");
                 latch.countDown();
             }
         });
 
-        assertEquals("/127.0.0.1:7000", this.session1.getRemoteParticipant().getRtpAddress().toString());
-        assertEquals("/127.0.0.1:9000", this.session2.getRemoteParticipant().getRtpAddress().toString());
-        initialHost = this.session2.getRemoteParticipant().getRtpAddress().toString();
+        assertEquals("/127.0.0.1:7000", this.session1.getRemoteParticipant().getDataAddress().toString());
+        assertEquals("/127.0.0.1:9000", this.session2.getRemoteParticipant().getDataAddress().toString());
+        initialHost = this.session2.getRemoteParticipant().getDataAddress().toString();
 
         RtpPacket packet = new RtpPacket();
         packet.setData(new byte[]{0x45, 0x45, 0x45, 0x45});
@@ -113,11 +121,11 @@ public class SingleParticipantSessionTest {
             fail("Exception caught: " + e.getClass().getSimpleName() + " - " + e.getMessage());
         }
 
-        assertEquals("/127.0.0.1:7000", this.session1.getRemoteParticipant().getRtpAddress().toString());
-        assertEquals("/127.0.0.1:6000", this.session2.getRemoteParticipant().getRtpAddress().toString());
+        assertEquals("/127.0.0.1:7000", this.session1.getRemoteParticipant().getDataAddress().toString());
+        assertEquals("/127.0.0.1:6000", this.session2.getRemoteParticipant().getDataAddress().toString());
 
         System.err.println("Updated remote participant's address from " + initialHost + " to " +
-                           this.session2.getRemoteParticipant().getRtpAddress().toString());
+                           this.session2.getRemoteParticipant().getDataAddress().toString());
 
         packet.setSequenceNumber(3);
         assertTrue(this.session2.sendDataPacket(packet));
