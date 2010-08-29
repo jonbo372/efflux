@@ -6,7 +6,6 @@ import org.junit.Test;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
@@ -33,12 +32,10 @@ public class MultiParticipantSessionTest {
         this.session = new MultiParticipantSession("id", 8, participant);
         assertTrue(this.session.init());
 
-        final CountDownLatch latch = new CountDownLatch(1);
-
         this.session.addEventListener(new RtpSessionEventListener() {
             @Override
             public void participantJoinedFromData(RtpSession session, RtpParticipant participant, RtpPacket packet) {
-                assertEquals(69, participant.getSynchronisationSourceId());
+                assertEquals(69, participant.getSsrc());
             }
 
             @Override
@@ -48,12 +45,16 @@ public class MultiParticipantSessionTest {
             @Override
             public void participantLeft(RtpSession session, RtpParticipant participant) {
             }
+
+            @Override
+            public void resolvedSsrcConflict(RtpSession session, long oldSsrc, long newSsrc) {
+            }
         });
 
         RtpPacket packet = new RtpPacket();
         packet.setSequenceNumber(1);
         packet.setPayloadType(8);
-        packet.setSynchronisationSourceId(69);
+        packet.setSsrc(69);
         SocketAddress address = new InetSocketAddress("localhost", 8000);
         this.session.dataPacketReceived(address, packet);
     }
@@ -76,7 +77,7 @@ public class MultiParticipantSessionTest {
         RtpPacket packet = new RtpPacket();
         packet.setSequenceNumber(10);
         packet.setPayloadType(8);
-        packet.setSynchronisationSourceId(69);
+        packet.setSsrc(69);
         SocketAddress address = new InetSocketAddress("localhost", 8000);
         this.session.dataPacketReceived(address, packet);
         packet.setSequenceNumber(11);

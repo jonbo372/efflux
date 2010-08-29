@@ -20,9 +20,14 @@ body {
   padding: 0;
 }
 
+#projects {
+  border-top: 1px dotted #ccc;
+  padding: 10px;
+  border-bottom: 1px dotted #ccc;
+}
+
 h1 {
   background: url("../img/h1_header.png") no-repeat center;
-  border-top: 1px dotted #ccc;
   line-height: 1.2em;
   font-size: 2em;
   padding: 1.5em;
@@ -50,12 +55,19 @@ a:visited {
 }
 
 a:hover {
-  color: #339900;
+  color: #58a037;
   text-decoration: underline;
 }
 
-.hotpotato {
-  color: #339900;
+.subtitle {
+  margin-top: -50px;
+  margin-left: 50px;
+  font-size: 1em;
+  color: #58a037;
+}
+
+.efflux {
+  color: #58a037;
   font-weight: bold;
 }
 
@@ -70,7 +82,7 @@ ul {
 li {
   margin: 5px;
   list-style: square;
-  color: #339900;
+  color: #58a037;
 }
 
 tt, tt *, pre, pre *, code, code * {

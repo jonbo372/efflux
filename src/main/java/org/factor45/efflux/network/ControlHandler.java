@@ -1,8 +1,9 @@
 package org.factor45.efflux.network;
 
-import org.factor45.efflux.session.ControlPacketReceiver;
+import org.factor45.efflux.logging.Logger;
 import org.factor45.efflux.packet.RtcpPacket;
 import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 
@@ -12,6 +13,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author <a href="mailto:bruno.carvalho@wit-software.com">Bruno de Carvalho</a>
  */
 public class ControlHandler extends SimpleChannelUpstreamHandler {
+
+    // constants ------------------------------------------------------------------------------------------------------
+
+    private static final Logger LOG = Logger.getLogger(ControlHandler.class);
 
     // internal vars --------------------------------------------------------------------------------------------------
 
@@ -32,6 +37,12 @@ public class ControlHandler extends SimpleChannelUpstreamHandler {
         if (e.getMessage() instanceof RtcpPacket) {
             this.receiver.controlPacketReceived(e.getRemoteAddress(), (RtcpPacket) e.getMessage());
         }
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
+        // Just log and proceed...
+        LOG.error("Caught exception on channel {}.", e.getCause(), e.getChannel());
     }
     
     // public methods -------------------------------------------------------------------------------------------------

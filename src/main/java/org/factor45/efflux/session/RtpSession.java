@@ -1,5 +1,7 @@
 package org.factor45.efflux.session;
 
+import org.factor45.efflux.network.ControlPacketReceiver;
+import org.factor45.efflux.network.DataPacketReceiver;
 import org.factor45.efflux.packet.RtcpPacket;
 import org.factor45.efflux.packet.RtpPacket;
 
@@ -24,7 +26,13 @@ public interface RtpSession extends DataPacketReceiver, ControlPacketReceiver {
 
     boolean sendControlPacket(RtcpPacket packet);
 
+    boolean addParticipant(RtpParticipant remoteParticipant);
+
+    RtpParticipant removeParticipant(long ssrc);
+
     RtpParticipant getLocalParticipant();
+
+    RtpParticipant getRemoteParticipant(long ssrsc);
 
     Collection<RtpParticipant> getRemoteParticipants();
 

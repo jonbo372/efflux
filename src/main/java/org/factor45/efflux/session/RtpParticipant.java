@@ -4,17 +4,23 @@ import org.factor45.efflux.packet.RtpPacket;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.util.Collection;
+import java.util.Random;
 
 /**
  * @author <a href="mailto:bruno.carvalho@wit-software.com">Bruno de Carvalho</a>
  */
 public class RtpParticipant {
 
+    // constants ------------------------------------------------------------------------------------------------------
+
+    private static final Random RANDOM = new Random(System.nanoTime());
+
     // internal vars --------------------------------------------------------------------------------------------------
 
     private SocketAddress dataAddress;
     private SocketAddress controlAddress;
-    private long synchronisationSourceId;
+    private long ssrc;
     private String name;
     private String cname;
     private String email;
@@ -25,9 +31,9 @@ public class RtpParticipant {
 
     // constructors ---------------------------------------------------------------------------------------------------
 
-    public RtpParticipant(String remoteHost, int dataPort, int controlPort, long synchronisationSourceId) {
-        if (synchronisationSourceId > 0xffffffffl) {
-            throw new IllegalArgumentException("Highest value for SSRC is 0xffffffff");
+    public RtpParticipant(String host, int dataPort, int controlPort, long ssrc) {
+        if ((ssrc < 0) || (ssrc > 0xffffffffl)) {
+            throw new IllegalArgumentException("Valid range for SSRC is [0;0xffffffff]");
         }
         if ((dataPort < 0) || (dataPort > 65536)) {
             throw new IllegalArgumentException("Invalid port number; use range [0;65536]");
@@ -35,9 +41,13 @@ public class RtpParticipant {
         if ((controlPort < 0) || (controlPort > 65536)) {
             throw new IllegalArgumentException("Invalid port number; use range [0;65536]");
         }
-        this.dataAddress = new InetSocketAddress(remoteHost, dataPort);
-        this.controlAddress = new InetSocketAddress(remoteHost, controlPort);
-        this.synchronisationSourceId = synchronisationSourceId;
+        this.dataAddress = new InetSocketAddress(host, dataPort);
+        this.controlAddress = new InetSocketAddress(host, controlPort);
+        this.ssrc = ssrc;
+    }
+
+    public RtpParticipant(String host, int dataPort, int controlPort) {
+        this(host, dataPort, controlPort, generateNewSsrc());
     }
 
     private RtpParticipant() {
@@ -49,8 +59,24 @@ public class RtpParticipant {
         RtpParticipant participant = new RtpParticipant();
         participant.dataAddress = origin;
         participant.controlAddress = new InetSocketAddress(origin.getAddress(), origin.getPort() + 1);
-        participant.synchronisationSourceId = packet.getSynchronisationSourceId();
+        participant.ssrc = packet.getSsrc();
         return participant;
+    }
+
+    /**
+     * Randomly generates a new SSRC.
+     * <p/>
+     * Assuming no other source can obtain the exact same seed (or they're using a different algorithm for the random
+     * generation) the probability of collision is roughly 10^-4 when the number of RTP sources is 1000.
+     * <a href="http://tools.ietf.org/html/rfc3550#section-8.1">RFC 3550, Section 8.1<a>
+     * <p/>
+     * In this case, collision odds are slightly bigger because the identifier size will be 31 bits (0x7fffffff,
+     * {@link Integer#MAX_VALUE} rather than the full 32 bits.
+     *
+     * @return A new, random, SSRC identifier.
+     */
+    public static long generateNewSsrc() {
+        return RANDOM.nextInt(Integer.MAX_VALUE);
     }
 
     // public methods -------------------------------------------------------------------------------------------------
@@ -63,6 +89,39 @@ public class RtpParticipant {
         this.controlAddress = address;
     }
 
+    public long resolveSsrcConflict(long ssrcToAvoid) {
+        // Will hardly ever loop more than once...
+        while (this.ssrc == ssrcToAvoid) {
+            this.ssrc = generateNewSsrc();
+        }
+
+        return this.ssrc;
+    }
+
+    public long resolveSsrcConflict(Collection<Long> ssrcsToAvoid) {
+        // Probability to execute more than once is higher than the other method that takes just a long as parameter,
+        // but its still incredibly low: for 1000 participants, there's roughly 2*10^-7 chance of collision
+        while (ssrcsToAvoid.contains(this.ssrc)) {
+            this.ssrc = generateNewSsrc();
+        }
+
+        return this.ssrc;
+    }
+
+    /**
+     * USE THIS WITH EXTREME CAUTION at the risk of seriously screwing up the way sessions handle data from incoming
+     * participants.
+     *
+     * @param ssrc The new SSRC.
+     */
+    public void updateSsrc(long ssrc) {
+        if ((ssrc < 0) || (ssrc > 0xffffffffl)) {
+            throw new IllegalArgumentException("Valid range for SSRC is [0;0xffffffff]");
+        }
+
+        this.ssrc = ssrc;
+    }
+
     // getters & setters ----------------------------------------------------------------------------------------------
 
     public SocketAddress getDataAddress() {
@@ -73,8 +132,8 @@ public class RtpParticipant {
         return controlAddress;
     }
 
-    public long getSynchronisationSourceId() {
-        return synchronisationSourceId;
+    public long getSsrc() {
+        return ssrc;
     }
 
     public String getCname() {
@@ -140,7 +199,7 @@ public class RtpParticipant {
     public String toString() {
         StringBuilder builder = new StringBuilder()
                 .append("RtpParticipant{")
-                .append("ssrc=").append(synchronisationSourceId)
+                .append("ssrc=").append(ssrc)
                 .append(", dataAddress=").append(dataAddress)
                 .append(", controlAddress=").append(controlAddress);
 

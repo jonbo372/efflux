@@ -40,7 +40,7 @@ public class RtpPacket {
     private int payloadType;
     private int sequenceNumber;
     private long timestamp;
-    private long synchronisationSourceId;
+    private long ssrc;
 
     private short extensionHeaderData;
     private byte[] extensionData;
@@ -79,7 +79,7 @@ public class RtpPacket {
 
         packet.sequenceNumber = buffer.readShort();
         packet.timestamp = buffer.readInt();
-        packet.synchronisationSourceId = buffer.readInt();
+        packet.ssrc = buffer.readInt();
 
         // Read extension headers & data
         if (extension) {
@@ -135,7 +135,7 @@ public class RtpPacket {
 
         buffer.writeShort(packet.sequenceNumber);
         buffer.writeInt((int) packet.timestamp);
-        buffer.writeInt((int) packet.synchronisationSourceId);
+        buffer.writeInt((int) packet.ssrc);
 
         // Write extension headers & data
         if (packet.hasExtension()) {
@@ -265,12 +265,12 @@ public class RtpPacket {
         this.timestamp = timestamp;
     }
 
-    public long getSynchronisationSourceId() {
-        return synchronisationSourceId;
+    public long getSsrc() {
+        return ssrc;
     }
 
-    public void setSynchronisationSourceId(long synchronisationSourceId) {
-        this.synchronisationSourceId = synchronisationSourceId;
+    public void setSsrc(long ssrc) {
+        this.ssrc = ssrc;
     }
 
     public short getExtensionHeaderData() {
@@ -318,7 +318,7 @@ public class RtpPacket {
                 .append(", PT=").append(this.payloadType)
                 .append(", SN=").append(this.sequenceNumber)
                 .append(", TS=").append(this.timestamp)
-                .append(", SSRC=").append(this.synchronisationSourceId)
+                .append(", SSRC=").append(this.ssrc)
                 .append(", CSRCs=").append(this.contributingSourceIds)
                 .append(", data=").append(this.getDataSize()).append(" bytes}")
                 .toString();

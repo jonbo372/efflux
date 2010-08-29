@@ -23,6 +23,7 @@ import java.net.SocketAddress;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -62,6 +63,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     protected DatagramChannel dataChannel;
     protected DatagramChannel controlChannel;
     protected final AtomicInteger sequence;
+    protected final AtomicBoolean sentOrReceivedPackets;
 
     // constructors ---------------------------------------------------------------------------------------------------
 
@@ -77,6 +79,7 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.dataListeners = new CopyOnWriteArrayList<RtpSessionDataListener>();
         this.eventListeners = new CopyOnWriteArrayList<RtpSessionEventListener>();
         this.sequence = new AtomicInteger(0);
+        this.sentOrReceivedPackets = new AtomicBoolean(false);
 
         this.useNio = USE_NIO;
         this.discardOutOfOrder = DISCARD_OUT_OF_ORDER;
@@ -151,7 +154,7 @@ public abstract class AbstractRtpSession implements RtpSession {
             return false;
         }
 
-        LOG.debug("Data & Control channels bound for RtpSession with id " + this.id);
+        LOG.debug("Data & Control channels bound for RtpSession with id {}.", this.id);
         return (this.initialised = true);
     }
 
@@ -165,6 +168,7 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.controlChannel.close();
         this.dataBootstrap.releaseExternalResources();
         this.controlBootstrap.releaseExternalResources();
+        LOG.debug("RtpSession with id {} terminated.", this.id);
 
         this.initialised = false;
     }
@@ -190,7 +194,7 @@ public abstract class AbstractRtpSession implements RtpSession {
         }
 
         packet.setPayloadType(this.payloadType);
-        packet.setSynchronisationSourceId(this.localParticipant.getSynchronisationSourceId());
+        packet.setSsrc(this.localParticipant.getSsrc());
         packet.setSequenceNumber(this.sequence.incrementAndGet());
         return this.internalSendData(packet);
     }
@@ -225,11 +229,85 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.eventListeners.remove(listener);
     }
 
+    // DataPacketReceiver ---------------------------------------------------------------------------------------------
+
+    @Override
+    public void dataPacketReceived(SocketAddress origin, RtpPacket packet) {
+        if (packet.getPayloadType() != this.payloadType) {
+            // Silently discard packets of wrong payload.
+            return;
+        }
+
+        if (packet.getSsrc() == this.localParticipant.getSsrc()) {
+            long oldSsrc = this.localParticipant.getSsrc();
+
+            // A collision has been detected after packets were sent, resolve by updating the local SSRC and sending
+            // a BYE RTCP packet for the old SSRC.
+            // http://tools.ietf.org/html/rfc3550#section-8.2
+            // If no packet was sent and this is the first being received then we can avoid collisions by switching
+            // our own SSRC to something else (nothing else is required because the collision was prematurely detected
+            // and avoided).
+            // http://tools.ietf.org/html/rfc3550#section-8.1, last paragraph
+            if (this.sentOrReceivedPackets.getAndSet(true)) {
+                // TODO create and send RTCP BYE
+            }
+
+            LOG.warn("SSRC collision with remote end detected on session with id {}; updating SSRC from {} to {}.",
+                     this.id, oldSsrc, this.localParticipant.resolveSsrcConflict(packet.getSsrc()));
+            for (RtpSessionEventListener listener : this.eventListeners) {
+                listener.resolvedSsrcConflict(this, oldSsrc, this.localParticipant.getSsrc());
+            }
+        }
+
+        // Associate the packet with a participant or create one.
+        RtpParticipantContext context = this.getContext(origin, packet);
+        if (context == null) {
+            // Implementations of this class SHOULD never return null here...
+            return;
+        }
+
+        if (!this.doBeforeDataReceivedValidation(packet)) {
+            // Subclass does not want to proceed due to some check failing.
+            return;
+        }
+
+        // Should the packet be discarded due to out of order SN?
+        if ((context.getLastSequenceNumber() >= packet.getSequenceNumber()) && this.discardOutOfOrder) {
+            LOG.trace("Discarded out of order packet (last SN was {}, packet SN was {}).",
+                      context.getLastSequenceNumber(), packet.getSequenceNumber());
+            return;
+        }
+
+        // Update last SN and location for participant.
+        // We trust the SSRC rather than the ip/port to identify participants (mostly because of NAT).
+        context.setLastSequenceNumber(packet.getSequenceNumber());
+        if (!origin.equals(context.getParticipant().getDataAddress())) {
+            context.getParticipant().updateRtpAddress(origin);
+            LOG.debug("Updated RTP address for {} to {} (session id: {}).", context.getParticipant(), origin, this.id);
+        }
+
+        if (!this.doAfterDataReceivedValidation(origin)) {
+            // Subclass does not want to proceed due to some check failing.
+            return;
+        }
+
+        // Finally, dispatch the event to the data listeners.
+        for (RtpSessionDataListener listener : this.dataListeners) {
+            listener.dataPacketReceived(this, context.getParticipant(), packet);
+        }
+    }
+
     // protected helpers ----------------------------------------------------------------------------------------------
 
     protected abstract boolean internalSendData(RtpPacket packet);
 
     protected abstract boolean internalSendControl(RtcpPacket packet);
+
+    protected abstract RtpParticipantContext getContext(SocketAddress origin, RtpPacket packet);
+
+    protected abstract boolean doBeforeDataReceivedValidation(RtpPacket packet);
+
+    protected abstract boolean doAfterDataReceivedValidation(SocketAddress origin);
 
     protected void writeToData(RtpPacket packet, SocketAddress destination) {
         this.dataChannel.write(packet, destination);

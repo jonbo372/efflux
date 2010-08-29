@@ -64,7 +64,7 @@ public class RtpPacketTest {
         assertEquals(8, packet.getPayloadType());
         assertEquals(6515, packet.getSequenceNumber());
         assertEquals(103700, packet.getTimestamp());
-        assertEquals(0x1fcc779a, packet.getSynchronisationSourceId());
+        assertEquals(0x1fcc779a, packet.getSsrc());
         assertEquals(6, packet.getDataSize());
     }
 
@@ -76,7 +76,7 @@ public class RtpPacketTest {
         packet.setPayloadType(8);
         packet.setSequenceNumber(6515);
         packet.setTimestamp(103700);
-        packet.setSynchronisationSourceId(0x1fcc779a);
+        packet.setSsrc(0x1fcc779a);
         packet.setData(new byte[]{(byte) 0xd5, (byte) 0xd5, (byte) 0xd5, (byte) 0xd5, (byte) 0xd5, (byte) 0xd5});
         ChannelBuffer buffer = packet.encode();
         assertTrue(Arrays.equals(ALAW_RTP_PACKET_SAMPLE, buffer.array()));
@@ -91,7 +91,7 @@ public class RtpPacketTest {
         packet.setPadding(true);
         packet.setSequenceNumber(69);
         packet.setTimestamp(696969);
-        packet.setSynchronisationSourceId(96);
+        packet.setSsrc(96);
         packet.setExtensionHeader((short) 0x8080, new byte[]{0x70, 0x70, 0x70, 0x70});
         packet.addContributingSourceId(69);
         packet.addContributingSourceId(70);
@@ -106,7 +106,7 @@ public class RtpPacketTest {
         assertEquals(packet.getPayloadType(), decoded.getPayloadType());
         assertEquals(packet.getSequenceNumber(), decoded.getSequenceNumber());
         assertEquals(packet.getTimestamp(), decoded.getTimestamp());
-        assertEquals(packet.getSynchronisationSourceId(), decoded.getSynchronisationSourceId());
+        assertEquals(packet.getSsrc(), decoded.getSsrc());
         assertEquals(packet.getExtensionDataSize(), decoded.getExtensionDataSize());
         assertEquals(packet.getExtensionHeaderData(), decoded.getExtensionHeaderData());
         assertTrue(Arrays.equals(packet.getExtensionData(), packet.getExtensionData()));
@@ -130,7 +130,7 @@ public class RtpPacketTest {
         assertTrue(packet.hasMarker());
         assertEquals(4664, packet.getSequenceNumber());
         assertEquals(1248975, packet.getTimestamp());
-        assertEquals(0x4fbc4ca1, packet.getSynchronisationSourceId());
+        assertEquals(0x4fbc4ca1, packet.getSsrc());
         assertEquals(1145 - 12, packet.getDataSize());
         System.err.println(packet);
     }

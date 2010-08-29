@@ -16,6 +16,15 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Unlike {@link SingleParticipantSession}, this session starts off with 0 remote participants.
  *
+ * <div class="note">
+ * <div class="header">Note:</div>
+ * This class is not completely thread-safe when making changes to the participant table. It is theoretically possible
+ * that a new participant is created at the exact same time both via API and events. Since the chances are so infimal
+ * and the results have no real consequences (only real information loss would be the internal fields of the
+ * {@link RtpParticipant}) I chose to keep it this way in order to avoid speed penalties when traversing the participant
+ * list both for sending and receiving data due to high contention.
+ * </div>
+ *
  * @author <a:mailto="bruno.carvalho@wit-software.com" />Bruno de Carvalho</a>
  */
 public class MultiParticipantSession extends AbstractRtpSession {
@@ -35,12 +44,48 @@ public class MultiParticipantSession extends AbstractRtpSession {
     // RtpSession -----------------------------------------------------------------------------------------------------
 
     @Override
+    public boolean addParticipant(RtpParticipant remoteParticipant) {
+        if (remoteParticipant.getSsrc() == this.localParticipant.getSsrc()) {
+            return false;
+        }
+
+        RtpParticipantContext context = this.participantTable.get(remoteParticipant.getSsrc());
+        if (context == null) {
+            context = new RtpParticipantContext(remoteParticipant);
+            this.participantTable.put(remoteParticipant.getSsrc(), context);
+            return true;
+        }
+
+        return false;
+    }
+
+    @Override
+    public RtpParticipant removeParticipant(long ssrc) {
+        RtpParticipantContext context = this.participantTable.remove(ssrc);
+        if (context == null) {
+            return null;
+        }
+
+        return context.getParticipant();
+    }
+
+    @Override
+    public RtpParticipant getRemoteParticipant(long ssrc) {
+        RtpParticipantContext context = this.participantTable.get(ssrc);
+        if (context == null) {
+            return null;
+        }
+
+        return context.getParticipant();
+    }
+
+    @Override
     public Collection<RtpParticipant> getRemoteParticipants() {
         Collection<RtpParticipant> participants = new ArrayList<RtpParticipant>(this.participantTable.size());
         for (RtpParticipantContext context : this.participantTable.values()) {
             participants.add(context.getParticipant());
         }
-        
+
         return participants;
     }
 
@@ -72,50 +117,33 @@ public class MultiParticipantSession extends AbstractRtpSession {
         }
     }
 
-    // DataPacketReceiver ---------------------------------------------------------------------------------------------
-
     @Override
-    public void dataPacketReceived(SocketAddress origin, RtpPacket packet) {
-        if (packet.getPayloadType() != this.payloadType) {
-            // Silently discard packets of wrong payload
-            return;
-        }
-
-        RtpParticipantContext context = this.getOrCreateParticipant(origin, packet);
-
-        if (context.getLastSequenceNumber() >= packet.getSequenceNumber() && this.discardOutOfOrder) {
-            LOG.trace("Discarded out of order packet for {} (last SN was {}, packet SN was {}, session id: {}).",
-                      context.getParticipant(), context.getLastSequenceNumber(), packet.getSequenceNumber(), this.id);
-            return;
-        }
-
-        context.setLastSequenceNumber(packet.getSequenceNumber());
-
-        if (!origin.equals(context.getParticipant().getDataAddress())) {
-            context.getParticipant().updateRtpAddress(origin);
-            LOG.debug("Updated RTP address for {} to {} (session id: {}).", context.getParticipant(), origin, this.id);
-        }
-
-        for (RtpSessionDataListener listener : this.dataListeners) {
-            listener.dataPacketReceived(this, context.getParticipant(), packet);
-        }
-    }
-
-    private RtpParticipantContext getOrCreateParticipant(SocketAddress origin, RtpPacket packet) {
-        RtpParticipantContext context = this.getParticipantContext(packet.getSynchronisationSourceId());
+    protected RtpParticipantContext getContext(SocketAddress origin, RtpPacket packet) {
+        // Get or create.
+        RtpParticipantContext context = this.participantTable.get(packet.getSsrc());
         if (context == null) {
             // New participant
-            RtpParticipant p = RtpParticipant.createFromUnexpectedDataPacket((InetSocketAddress) origin, packet);
-            context = new RtpParticipantContext(p);
-            this.saveParticipantContext(context);
+            RtpParticipant participant = RtpParticipant.createFromUnexpectedDataPacket((InetSocketAddress) origin, packet);
+            context = new RtpParticipantContext(participant);
+            this.participantTable.put(participant.getSsrc(), context);
 
-            LOG.debug("New participant joined session with id {} (from data packet): {}.", this.id, p);
-            for (RtpSessionEventListener listener : eventListeners) {
-                listener.participantJoinedFromData(this, p, packet);
+            LOG.debug("New participant joined session with id {} (from data packet): {}.", this.id, participant);
+            for (RtpSessionEventListener listener : this.eventListeners) {
+                listener.participantJoinedFromData(this, participant, packet);
             }
         }
 
         return context;
+    }
+
+    @Override
+    protected boolean doBeforeDataReceivedValidation(RtpPacket packet) {
+        return true;
+    }
+
+    @Override
+    protected boolean doAfterDataReceivedValidation(SocketAddress origin) {
+        return true;
     }
 
     // ControlPacketReceiver ------------------------------------------------------------------------------------------
@@ -125,16 +153,10 @@ public class MultiParticipantSession extends AbstractRtpSession {
 
     }
 
-    // private helpers ------------------------------------------------------------------------------------------------
-
-    private void saveParticipantContext(RtpParticipantContext context) {
-        this.participantTable.put(context.getParticipant().getSynchronisationSourceId(), context);
-    }
-
     // getters & setters ----------------------------------------------------------------------------------------------
 
-    public RtpParticipantContext getParticipantContext(Long synchronisationSourceId) {
-        return this.participantTable.get(synchronisationSourceId);
+    public RtpParticipantContext getParticipantContext(long ssrc) {
+        return this.participantTable.get(ssrc);
     }
 
     public Map<Long, RtpParticipantContext> getParticipantTable() {
