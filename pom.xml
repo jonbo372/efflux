@@ -23,8 +23,8 @@
 
   <licenses>
     <license>
-      <name>GPL</name>
-      <url>http://www.gnu.org/licenses/gpl-3.0.txt</url>
+      <name>Apache License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0</url>
     </license>
   </licenses>
 
@@ -63,7 +63,7 @@
     <dependency>
       <groupId>org.jboss.netty</groupId>
       <artifactId>netty</artifactId>
-      <version>3.2.1.Final</version>
+      <version>3.2.2.Final</version>
       <scope>compile</scope>
     </dependency>
     <dependency>

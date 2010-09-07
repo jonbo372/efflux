@@ -1,6 +1,22 @@
+/*
+ * Copyright 2010 Bruno de Carvalho
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.factor45.efflux.session;
 
-import org.factor45.efflux.packet.RtpPacket;
+import org.factor45.efflux.packet.DataPacket;
 import org.junit.After;
 import org.junit.Test;
 
@@ -11,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.*;
 
 /**
- * @author <a href="mailto:bruno.carvalho@wit-software.com">Bruno de Carvalho</a>
+ * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
 public class SingleParticipantSessionFunctionalTest {
 
@@ -39,7 +55,7 @@ public class SingleParticipantSessionFunctionalTest {
         assertTrue(this.session1.init());
         this.session1.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
                 System.err.println("Session 1 received packet: " + packet + "(session: " + session.getId() + ")");
                 latch.countDown();
             }
@@ -51,13 +67,13 @@ public class SingleParticipantSessionFunctionalTest {
         assertTrue(this.session2.init());
         this.session2.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
                 System.err.println("Session 2 received packet: " + packet + "(session: " + session.getId() + ")");
                 latch.countDown();
             }
         });
 
-        RtpPacket packet = new RtpPacket();
+        DataPacket packet = new DataPacket();
         packet.setData(new byte[]{0x45, 0x45, 0x45, 0x45});
         packet.setSequenceNumber(1);
         assertTrue(this.session1.sendDataPacket(packet));
@@ -83,7 +99,7 @@ public class SingleParticipantSessionFunctionalTest {
         assertTrue(this.session1.init());
         this.session1.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
                 System.err.println("Session 1 received packet: " + packet + "(session: " + session.getId() + ")");
                 latch2.countDown();
             }
@@ -95,7 +111,7 @@ public class SingleParticipantSessionFunctionalTest {
         assertTrue(this.session2.init());
         this.session2.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
                 System.err.println("Session 2 received packet: " + packet + "(session: " + session.getId() + ")");
                 latch.countDown();
             }
@@ -105,7 +121,7 @@ public class SingleParticipantSessionFunctionalTest {
         assertEquals("/127.0.0.1:9000", this.session2.getRemoteParticipant().getDataAddress().toString());
         initialHost = this.session2.getRemoteParticipant().getDataAddress().toString();
 
-        RtpPacket packet = new RtpPacket();
+        DataPacket packet = new DataPacket();
         packet.setData(new byte[]{0x45, 0x45, 0x45, 0x45});
         packet.setSequenceNumber(1);
         assertTrue(this.session1.sendDataPacket(packet));
@@ -140,7 +156,7 @@ public class SingleParticipantSessionFunctionalTest {
         assertTrue(this.session1.init());
         this.session1.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
                 System.err.println("Session 1 received packet: " + packet + "(session: " + session.getId() + ")");
                 counter.incrementAndGet();
             }
@@ -150,7 +166,7 @@ public class SingleParticipantSessionFunctionalTest {
         RtpParticipant remote2 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
         this.session2 = new SingleParticipantSession("Session2", 8, local2, remote2) {
             @Override
-            public boolean sendDataPacket(RtpPacket packet) {
+            public boolean sendDataPacket(DataPacket packet) {
                 if (!this.initialised) {
                     return false;
                 }
@@ -164,7 +180,7 @@ public class SingleParticipantSessionFunctionalTest {
         };
         assertTrue(this.session2.init());
 
-        RtpPacket packet = new RtpPacket();
+        DataPacket packet = new DataPacket();
         packet.setData(new byte[]{0x45, 0x45, 0x45, 0x45});
         packet.setSsrc(local2.getSsrc());
         assertTrue(this.session2.sendDataPacket(packet));
@@ -188,17 +204,17 @@ public class SingleParticipantSessionFunctionalTest {
         assertTrue(this.session1.init());
         this.session1.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
                 System.err.println("Session 1 received packet: " + packet + "(session: " + session.getId() + ")");
             }
         });
         this.session1.addEventListener(new RtpSessionEventListener() {
             @Override
-            public void participantJoinedFromData(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+            public void participantJoinedFromData(RtpSession session, RtpParticipant participant, DataPacket packet) {
             }
 
             @Override
-            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant, DataPacket packet) {
             }
 
             @Override
@@ -218,7 +234,7 @@ public class SingleParticipantSessionFunctionalTest {
         assertTrue(this.session2.init());
         this.session2.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
                 System.err.println("Session 2 received packet: " + packet + "(session: " + session.getId() + ")");
                 latch2.countDown();
             }

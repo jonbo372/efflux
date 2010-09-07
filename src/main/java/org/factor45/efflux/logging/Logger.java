@@ -1,3 +1,19 @@
+/*
+ * Copyright 2010 Bruno de Carvalho
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.factor45.efflux.logging;
 
 import org.slf4j.LoggerFactory;
@@ -8,11 +24,12 @@ import org.slf4j.helpers.MessageFormatter;
  * <p/>
  * Offers java 5 syntax support (varargs) and performs some optimisations.
  *
- * @author <a href="mailto:bruno.carvalho@wit-software.com">Bruno de Carvalho</a>
+ * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
 public class Logger {
 
-    // internal vars
+    // internal vars --------------------------------------------------------------------------------------------------
+    
     private org.slf4j.Logger logger;
 
     // constructors ---------------------------------------------------------------------------------------------------
@@ -93,9 +110,9 @@ public class Logger {
      * @param parameters Array of parameters.
      */
     public void trace(String message, Object... parameters) {
-        // this is where magic happens and syntax sugar is offered
-        // the interface overrides an Object[] and offers Object... instead!
-        // awesome, ain't it? ;D
+        // This is where magic happens and syntax sugar is offered...
+        // The interface overrides an Object[] and offers Object... instead!
+        // Awesome, ain't it? No. It should come as standard in SLF4J.
         this.logger.trace(message, parameters);
     }
 
@@ -127,7 +144,7 @@ public class Logger {
      */
     public void trace(String message, Throwable throwable, Object... parameters) {
         if (this.logger.isTraceEnabled()) {
-            this.logger.trace(MessageFormatter.arrayFormat(message, parameters), throwable);
+            this.logger.trace(MessageFormatter.arrayFormat(message, parameters).getMessage(), throwable);
         }
     }
 
@@ -198,7 +215,7 @@ public class Logger {
      */
     public void debug(String message, Throwable throwable, Object... parameters) {
         if (this.logger.isDebugEnabled()) {
-            this.logger.debug(MessageFormatter.arrayFormat(message, parameters), throwable);
+            this.logger.debug(MessageFormatter.arrayFormat(message, parameters).getMessage(), throwable);
         }
     }
 
@@ -268,7 +285,7 @@ public class Logger {
      */
     public void info(String message, Throwable throwable, Object... parameters) {
         if (this.logger.isInfoEnabled()) {
-            this.logger.info(MessageFormatter.arrayFormat(message, parameters), throwable);
+            this.logger.info(MessageFormatter.arrayFormat(message, parameters).getMessage(), throwable);
         }
     }
 
@@ -338,7 +355,7 @@ public class Logger {
      */
     public void warn(String message, Throwable throwable, Object... parameters) {
         if (this.logger.isWarnEnabled()) {
-            this.logger.warn(MessageFormatter.arrayFormat(message, parameters), throwable);
+            this.logger.warn(MessageFormatter.arrayFormat(message, parameters).getMessage(), throwable);
         }
     }
 
@@ -408,7 +425,7 @@ public class Logger {
      */
     public void error(String message, Throwable throwable, Object... parameters) {
         if (this.logger.isErrorEnabled()) {
-            this.logger.error(MessageFormatter.arrayFormat(message, parameters), throwable);
+            this.logger.error(MessageFormatter.arrayFormat(message, parameters).getMessage(), throwable);
         }
     }
 }

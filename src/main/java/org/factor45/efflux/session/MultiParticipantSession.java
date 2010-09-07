@@ -1,7 +1,24 @@
+/*
+ * Copyright 2010 Bruno de Carvalho
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.factor45.efflux.session;
 
-import org.factor45.efflux.packet.RtcpPacket;
-import org.factor45.efflux.packet.RtpPacket;
+import org.factor45.efflux.packet.CompoundControlPacket;
+import org.factor45.efflux.packet.ControlPacket;
+import org.factor45.efflux.packet.DataPacket;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -92,33 +109,47 @@ public class MultiParticipantSession extends AbstractRtpSession {
     // AbstractRtpSession ---------------------------------------------------------------------------------------------
 
     @Override
-    protected boolean internalSendData(RtpPacket packet) {
+    protected boolean internalSendData(DataPacket packet) {
         try {
             for (RtpParticipantContext context : this.participantTable.values()) {
                 this.writeToData(packet, context.getParticipant().getDataAddress());
             }
             return true;
         } catch (Exception e) {
-            LOG.error("Failed to send {} to participants in session with id {}.", this.id);
+            LOG.error("Failed to send RTP packet to participants in session with id {}.", this.id);
             return false;
         }
     }
 
     @Override
-    protected boolean internalSendControl(RtcpPacket packet) {
+    protected boolean internalSendControl(ControlPacket packet) {
         try {
             for (RtpParticipantContext context : this.participantTable.values()) {
                 this.writeToControl(packet, context.getParticipant().getDataAddress());
             }
             return true;
         } catch (Exception e) {
-            LOG.error("Failed to send {} to participants in session with id {}.", this.id);
+            LOG.error("Failed to send RTCP packet to participants in session with id {}.", this.id);
+            return false;
+        }
+    }
+
+
+    @Override
+    protected boolean internalSendControl(CompoundControlPacket packet) {
+        try {
+            for (RtpParticipantContext context : this.participantTable.values()) {
+                this.writeToControl(packet, context.getParticipant().getDataAddress());
+            }
+            return true;
+        } catch (Exception e) {
+            LOG.error("Failed to send RTCP compound packet to participants in session with id {}.", this.id);
             return false;
         }
     }
 
     @Override
-    protected RtpParticipantContext getContext(SocketAddress origin, RtpPacket packet) {
+    protected RtpParticipantContext getContext(SocketAddress origin, DataPacket packet) {
         // Get or create.
         RtpParticipantContext context = this.participantTable.get(packet.getSsrc());
         if (context == null) {
@@ -137,7 +168,7 @@ public class MultiParticipantSession extends AbstractRtpSession {
     }
 
     @Override
-    protected boolean doBeforeDataReceivedValidation(RtpPacket packet) {
+    protected boolean doBeforeDataReceivedValidation(DataPacket packet) {
         return true;
     }
 
@@ -149,7 +180,7 @@ public class MultiParticipantSession extends AbstractRtpSession {
     // ControlPacketReceiver ------------------------------------------------------------------------------------------
 
     @Override
-    public void controlPacketReceived(SocketAddress origin, RtcpPacket packet) {
+    public void controlPacketReceived(SocketAddress origin, CompoundControlPacket packet) {
 
     }
 

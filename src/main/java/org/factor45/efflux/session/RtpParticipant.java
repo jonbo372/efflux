@@ -1,6 +1,22 @@
+/*
+ * Copyright 2010 Bruno de Carvalho
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.factor45.efflux.session;
 
-import org.factor45.efflux.packet.RtpPacket;
+import org.factor45.efflux.packet.DataPacket;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -8,7 +24,7 @@ import java.util.Collection;
 import java.util.Random;
 
 /**
- * @author <a href="mailto:bruno.carvalho@wit-software.com">Bruno de Carvalho</a>
+ * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
 public class RtpParticipant {
 
@@ -32,7 +48,7 @@ public class RtpParticipant {
     // constructors ---------------------------------------------------------------------------------------------------
 
     public RtpParticipant(String host, int dataPort, int controlPort, long ssrc) {
-        if ((ssrc < 0) || (ssrc > 0xffffffffl)) {
+        if ((ssrc < 0) || (ssrc > 0xffffffffL)) {
             throw new IllegalArgumentException("Valid range for SSRC is [0;0xffffffff]");
         }
         if ((dataPort < 0) || (dataPort > 65536)) {
@@ -55,7 +71,7 @@ public class RtpParticipant {
 
     // public static methods ------------------------------------------------------------------------------------------
 
-    public static RtpParticipant createFromUnexpectedDataPacket(InetSocketAddress origin, RtpPacket packet) {
+    public static RtpParticipant createFromUnexpectedDataPacket(InetSocketAddress origin, DataPacket packet) {
         RtpParticipant participant = new RtpParticipant();
         participant.dataAddress = origin;
         participant.controlAddress = new InetSocketAddress(origin.getAddress(), origin.getPort() + 1);
@@ -115,7 +131,7 @@ public class RtpParticipant {
      * @param ssrc The new SSRC.
      */
     public void updateSsrc(long ssrc) {
-        if ((ssrc < 0) || (ssrc > 0xffffffffl)) {
+        if ((ssrc < 0) || (ssrc > 0xffffffffL)) {
             throw new IllegalArgumentException("Valid range for SSRC is [0;0xffffffff]");
         }
 

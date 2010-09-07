@@ -1,3 +1,19 @@
+/*
+ * Copyright 2010 Bruno de Carvalho
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.factor45.efflux.session;
 
 import org.factor45.efflux.logging.Logger;
@@ -7,8 +23,9 @@ import org.factor45.efflux.network.ControlPacketEncoder;
 import org.factor45.efflux.network.DataHandler;
 import org.factor45.efflux.network.DataPacketDecoder;
 import org.factor45.efflux.network.DataPacketEncoder;
-import org.factor45.efflux.packet.RtcpPacket;
-import org.factor45.efflux.packet.RtpPacket;
+import org.factor45.efflux.packet.CompoundControlPacket;
+import org.factor45.efflux.packet.ControlPacket;
+import org.factor45.efflux.packet.DataPacket;
 import org.jboss.netty.bootstrap.ConnectionlessBootstrap;
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelPipelineFactory;
@@ -55,6 +72,7 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     protected final RtpParticipant localParticipant;
     protected final List<RtpSessionDataListener> dataListeners;
+    protected final List<RtpSessionControlListener> controlListeners;
     protected final List<RtpSessionEventListener> eventListeners;
     protected boolean useNio;
     protected boolean initialised;
@@ -77,6 +95,7 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.localParticipant = local;
 
         this.dataListeners = new CopyOnWriteArrayList<RtpSessionDataListener>();
+        this.controlListeners = new CopyOnWriteArrayList<RtpSessionControlListener>();
         this.eventListeners = new CopyOnWriteArrayList<RtpSessionEventListener>();
         this.sequence = new AtomicInteger(0);
         this.sentOrReceivedPackets = new AtomicBoolean(false);
@@ -179,7 +198,7 @@ public abstract class AbstractRtpSession implements RtpSession {
             return false;
         }
 
-        RtpPacket packet = new RtpPacket();
+        DataPacket packet = new DataPacket();
         // Other fields will be set by sendDataPacket()
         packet.setTimestamp(timestamp);
         packet.setData(data);
@@ -188,7 +207,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     @Override
-    public boolean sendDataPacket(RtpPacket packet) {
+    public boolean sendDataPacket(DataPacket packet) {
         if (!this.initialised) {
             return false;
         }
@@ -200,7 +219,12 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     @Override
-    public boolean sendControlPacket(RtcpPacket packet) {
+    public boolean sendControlPacket(ControlPacket packet) {
+        return this.initialised && this.internalSendControl(packet);
+    }
+
+    @Override
+    public boolean sendControlPacket(CompoundControlPacket packet) {
         return this.initialised && this.internalSendControl(packet);
     }
 
@@ -220,6 +244,16 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     @Override
+    public void addControlListener(RtpSessionControlListener listener) {
+        this.controlListeners.add(listener);
+    }
+
+    @Override
+    public void removeControlListener(RtpSessionControlListener listener) {
+        this.controlListeners.remove(listener);
+    }
+
+    @Override
     public void addEventListener(RtpSessionEventListener listener) {
         this.eventListeners.add(listener);
     }
@@ -232,7 +266,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     // DataPacketReceiver ---------------------------------------------------------------------------------------------
 
     @Override
-    public void dataPacketReceived(SocketAddress origin, RtpPacket packet) {
+    public void dataPacketReceived(SocketAddress origin, DataPacket packet) {
         if (packet.getPayloadType() != this.payloadType) {
             // Silently discard packets of wrong payload.
             return;
@@ -299,21 +333,27 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     // protected helpers ----------------------------------------------------------------------------------------------
 
-    protected abstract boolean internalSendData(RtpPacket packet);
+    protected abstract boolean internalSendData(DataPacket packet);
 
-    protected abstract boolean internalSendControl(RtcpPacket packet);
+    protected abstract boolean internalSendControl(ControlPacket packet);
 
-    protected abstract RtpParticipantContext getContext(SocketAddress origin, RtpPacket packet);
+    protected abstract boolean internalSendControl(CompoundControlPacket packet);
 
-    protected abstract boolean doBeforeDataReceivedValidation(RtpPacket packet);
+    protected abstract RtpParticipantContext getContext(SocketAddress origin, DataPacket packet);
+
+    protected abstract boolean doBeforeDataReceivedValidation(DataPacket packet);
 
     protected abstract boolean doAfterDataReceivedValidation(SocketAddress origin);
 
-    protected void writeToData(RtpPacket packet, SocketAddress destination) {
+    protected void writeToData(DataPacket packet, SocketAddress destination) {
         this.dataChannel.write(packet, destination);
     }
 
-    protected void writeToControl(RtcpPacket packet, SocketAddress destination) {
+    protected void writeToControl(ControlPacket packet, SocketAddress destination) {
+        this.controlChannel.write(packet, destination);
+    }
+
+    protected void writeToControl(CompoundControlPacket packet, SocketAddress destination) {
         this.controlChannel.write(packet, destination);
     }
 

@@ -1,36 +1,82 @@
+/*
+ * Copyright 2010 Bruno de Carvalho
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.factor45.efflux.network;
 
 import org.factor45.efflux.logging.Logger;
+import org.factor45.efflux.packet.CompoundControlPacket;
+import org.factor45.efflux.packet.ControlPacket;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelEvent;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
-import org.jboss.netty.logging.InternalLogger;
-import org.jboss.netty.logging.InternalLoggerFactory;
+import org.jboss.netty.channel.ChannelUpstreamHandler;
+import org.jboss.netty.channel.Channels;
+import org.jboss.netty.channel.MessageEvent;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * @author <a href="mailto:bruno.carvalho@wit-software.com">Bruno de Carvalho</a>
+ * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
-public class ControlPacketDecoder extends OneToOneDecoder {
+public class ControlPacketDecoder implements ChannelUpstreamHandler {
 
     // constants ------------------------------------------------------------------------------------------------------
 
-    protected static final Logger LOG = Logger.getLogger(OneToOneDecoder.class);
+    protected static final Logger LOG = Logger.getLogger(ControlPacketDecoder.class);
 
-    // OneToOneDecoder ------------------------------------------------------------------------------------------------
+    // ChannelUpstreamHandler -----------------------------------------------------------------------------------------
 
-    @Override
-    protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg) throws Exception {
-        if (!(msg instanceof ChannelBuffer)) {
-            return null;
+    public void handleUpstream(ChannelHandlerContext ctx, ChannelEvent evt) throws Exception {
+        // Only handle MessageEvent.
+        if (!(evt instanceof MessageEvent)) {
+            ctx.sendUpstream(evt);
+            return;
         }
 
-        try {
-            //return RtcpPacket.decode((ChannelBuffer) msg);
-            return null;
-        } catch (Exception e) {
-            LOG.debug("Failed to decode RTP packet.", e);
-            return null;
+        // Only decode if it's a ChannelBuffer.
+        MessageEvent e = (MessageEvent) evt;
+        if (!(e.getMessage() instanceof ChannelBuffer)) {
+            return;
+        }
+
+        ChannelBuffer buffer = (ChannelBuffer) e.getMessage();
+        if ((buffer.readableBytes() % 4) != 0) {
+            LOG.debug("Invalid RTCP packet received: total length should be multiple of 4 but is {}",
+                      buffer.readableBytes());
+            return;
+        }
+
+        // Usually 2 packets per UDP frame...
+        List<ControlPacket> controlPacketList = new ArrayList<ControlPacket>(2);
+
+        // While there's data to read, keep on decoding.
+        while (buffer.readableBytes() > 0) {
+            try {
+                controlPacketList.add(ControlPacket.decode(buffer));
+            } catch (Exception e1) {
+                LOG.debug("Exception caught while decoding RTCP packet.", e1);
+            }
+        }
+
+        if (!controlPacketList.isEmpty()) {
+            // Only send upwards when there were more than one valid decoded packets.
+            // TODO shouldn't the whole compound packet be discarded when one of them has errors?!
+            Channels.fireMessageReceived(ctx, new CompoundControlPacket(controlPacketList), e.getRemoteAddress());
         }
     }
 }

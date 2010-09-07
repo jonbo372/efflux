@@ -1,7 +1,24 @@
+/*
+ * Copyright 2010 Bruno de Carvalho
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.factor45.efflux.session;
 
-import org.factor45.efflux.packet.RtcpPacket;
-import org.factor45.efflux.packet.RtpPacket;
+import org.factor45.efflux.packet.CompoundControlPacket;
+import org.factor45.efflux.packet.ControlPacket;
+import org.factor45.efflux.packet.DataPacket;
 
 import java.net.SocketAddress;
 import java.util.Arrays;
@@ -23,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * This is <strong>NOT</strong> a fully RFC 3550 compliant implementation, but rather a special purpose one for very
  * specific scenarios.
  *
- * @author <a href="mailto:bruno.carvalho@wit-software.com">Bruno de Carvalho</a>
+ * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
 public class SingleParticipantSession extends AbstractRtpSession {
 
@@ -81,7 +98,7 @@ public class SingleParticipantSession extends AbstractRtpSession {
     // AbstractRtpSession ---------------------------------------------------------------------------------------------
 
     @Override
-    protected boolean internalSendData(RtpPacket packet) {
+    protected boolean internalSendData(DataPacket packet) {
         try {
             this.writeToData(packet, this.context.getParticipant().getDataAddress());
             this.sentOrReceivedPackets.set(true);
@@ -93,13 +110,27 @@ public class SingleParticipantSession extends AbstractRtpSession {
     }
 
     @Override
-    protected boolean internalSendControl(RtcpPacket packet) {
+    protected boolean internalSendControl(ControlPacket packet) {
         try {
             this.writeToControl(packet, this.context.getParticipant().getControlAddress());
             this.sentOrReceivedPackets.set(true);
             return true;
         } catch (Exception e) {
-            LOG.error("Failed to send {} to {} in session with id {}.", this.id, this.context.getParticipant());
+            LOG.error("Failed to send RTCP packet to {} in session with id {}.",
+                      this.context.getParticipant(), this.id);
+            return false;
+        }
+    }
+
+    @Override
+    protected boolean internalSendControl(CompoundControlPacket packet) {
+        try {
+            this.writeToControl(packet, this.context.getParticipant().getControlAddress());
+            this.sentOrReceivedPackets.set(true);
+            return true;
+        } catch (Exception e) {
+            LOG.error("Failed to send compound RTCP packet to {} in session with id {}.",
+                      this.context.getParticipant(), this.id);
             return false;
         }
     }
@@ -107,12 +138,12 @@ public class SingleParticipantSession extends AbstractRtpSession {
     // DataPacketReceiver ---------------------------------------------------------------------------------------------
 
     @Override
-    protected RtpParticipantContext getContext(SocketAddress origin, RtpPacket packet) {
+    protected RtpParticipantContext getContext(SocketAddress origin, DataPacket packet) {
         return this.context;
     }
 
     @Override
-    protected boolean doBeforeDataReceivedValidation(RtpPacket packet) {
+    protected boolean doBeforeDataReceivedValidation(DataPacket packet) {
         if (!this.receivedPackets.getAndSet(true)) {
             // If this is the first packet then setup the SSRC for this participant (we didn't know it yet).
             this.context.getParticipant().updateSsrc(packet.getSsrc());
@@ -136,11 +167,14 @@ public class SingleParticipantSession extends AbstractRtpSession {
     // ControlPacketReceiver ------------------------------------------------------------------------------------------
 
     @Override
-    public void controlPacketReceived(SocketAddress origin, RtcpPacket packet) {
-        System.err.println("Received control " + packet + " from " + origin);
+    public void controlPacketReceived(SocketAddress origin, CompoundControlPacket packet) {
         if (origin != this.context.getParticipant().getControlAddress()) {
             this.context.getParticipant().updateRtcpAddress(origin);
             LOG.debug("Updated remote participant's RTCP address to {} in RtpSession with id {}.", origin, this.id);
+        }
+
+        for (RtpSessionControlListener listener : this.controlListeners) {
+            listener.controlPacketReceived(this, packet);
         }
     }
 

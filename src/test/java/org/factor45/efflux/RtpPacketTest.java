@@ -1,6 +1,22 @@
+/*
+ * Copyright 2010 Bruno de Carvalho
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.factor45.efflux;
 
-import org.factor45.efflux.packet.RtpPacket;
+import org.factor45.efflux.packet.DataPacket;
 import org.factor45.efflux.packet.RtpVersion;
 import org.factor45.efflux.util.ByteUtils;
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -11,7 +27,7 @@ import java.util.Arrays;
 import static org.junit.Assert.*;
 
 /**
- * @author <a href="mailto:bruno.carvalho@wit-software.com">Bruno de Carvalho</a>
+ * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
 public class RtpPacketTest {
 
@@ -55,7 +71,7 @@ public class RtpPacketTest {
 
     @Test
     public void testDecode() {
-        RtpPacket packet = RtpPacket.decode(ALAW_RTP_PACKET_SAMPLE);
+        DataPacket packet = DataPacket.decode(ALAW_RTP_PACKET_SAMPLE);
         assertEquals(RtpVersion.V2, packet.getVersion());
         assertFalse(packet.hasPadding());
         assertFalse(packet.hasExtension());
@@ -70,7 +86,7 @@ public class RtpPacketTest {
 
     @Test
     public void testEncode() {
-        RtpPacket packet = new RtpPacket();
+        DataPacket packet = new DataPacket();
         packet.setVersion(RtpVersion.V2);
         packet.setMarker(true);
         packet.setPayloadType(8);
@@ -84,7 +100,7 @@ public class RtpPacketTest {
 
     @Test
     public void testEncodeDecode() {
-        RtpPacket packet = new RtpPacket();
+        DataPacket packet = new DataPacket();
         packet.setVersion(RtpVersion.V2);
         packet.setMarker(true);
         packet.setPayloadType(98);
@@ -100,7 +116,7 @@ public class RtpPacketTest {
 
         ChannelBuffer buffer = packet.encode();
 
-        RtpPacket decoded = RtpPacket.decode(buffer);
+        DataPacket decoded = DataPacket.decode(buffer);
         assertEquals(packet.getVersion(), decoded.getVersion());
         assertEquals(packet.hasMarker(), decoded.hasMarker());
         assertEquals(packet.getPayloadType(), decoded.getPayloadType());
@@ -123,7 +139,7 @@ public class RtpPacketTest {
         byte[] h263packet = ByteUtils.convertHexStringToByteArray(H263_PACKET);
         assertEquals(h263packet.length, 1145);
 
-        RtpPacket packet = RtpPacket.decode(h263packet);
+        DataPacket packet = DataPacket.decode(h263packet);
         assertEquals(RtpVersion.V2, packet.getVersion());
         assertFalse(packet.hasPadding());
         assertFalse(packet.hasExtension());

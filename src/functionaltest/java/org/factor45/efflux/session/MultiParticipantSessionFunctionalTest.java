@@ -1,6 +1,22 @@
+/*
+ * Copyright 2010 Bruno de Carvalho
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.factor45.efflux.session;
 
-import org.factor45.efflux.packet.RtpPacket;
+import org.factor45.efflux.packet.DataPacket;
 import org.junit.After;
 import org.junit.Test;
 
@@ -47,7 +63,7 @@ public class MultiParticipantSessionFunctionalTest {
             this.sessions[i].addDataListener(new RtpSessionDataListener() {
 
                 @Override
-                public void dataPacketReceived(RtpSession session, RtpParticipant participant, RtpPacket packet) {
+                public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
                     System.err.println(session.getId() + " received data from " + participant + ": " + packet);
                     if (counter.incrementAndGet() == (N - 1)) {
                         // Release the latch once all N-1 messages (because it wont receive the message it sends) are
