@@ -17,20 +17,12 @@
 package org.factor45.efflux.packet;
 
 import org.jboss.netty.buffer.ChannelBuffer;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import org.jboss.netty.buffer.ChannelBuffers;
 
 /**
  * @author <a:mailto="bruno.carvalho@wit-software.com" />Bruno de Carvalho</a>
  */
-public class ReceiverReportPacket extends ControlPacket {
-
-    // internal vars --------------------------------------------------------------------------------------------------
-
-    private long senderSsrc;
-    private List<ReceptionReport> receptionReports;
+public class ReceiverReportPacket extends AbstractReportPacket {
 
     // constructors ---------------------------------------------------------------------------------------------------
 
@@ -47,7 +39,7 @@ public class ReceiverReportPacket extends ControlPacket {
 
         int read = 4;
         for (int i = 0; i < innerBlocks; i++) {
-            packet.addSenderReport(ReceptionReport.decode(buffer));
+            packet.addReceptionReportBlock(ReceptionReport.decode(buffer));
             read += 24; // Each SR/RR block has 24 bytes (6 32bit words)
         }
 
@@ -63,63 +55,82 @@ public class ReceiverReportPacket extends ControlPacket {
         return packet;
     }
 
+    public static ChannelBuffer encode(int currentCompoundLength, int fixedBlockSize, ReceiverReportPacket packet) {
+        if ((currentCompoundLength < 0) || ((currentCompoundLength % 4) > 0)) {
+            throw new IllegalArgumentException("Current compound length must be a non-negative multiple of 4");
+        }
+        if ((fixedBlockSize < 0) || ((fixedBlockSize % 4) > 0)) {
+            throw new IllegalArgumentException("Padding modulus must be a non-negative multiple of 4");
+        }
+
+        // Common header + sender ssrc
+        int size = 4 + 4;
+        ChannelBuffer buffer;
+        if (packet.receptionReports != null) {
+            size += packet.receptionReports.size() * 24;
+        }
+
+        // If packet was configured to have padding, calculate padding and add it.
+        int padding = 0;
+        if (fixedBlockSize > 0) {
+            // If padding modulus is > 0 then the padding is equal to:
+            // (global size of the compound RTCP packet) mod (block size)
+            // Block size alignment might be necessary for some encryption algorithms
+            // RFC section 6.4.1
+            padding = fixedBlockSize - ((size + currentCompoundLength) % fixedBlockSize);
+            if (padding == fixedBlockSize) {
+                padding = 0;
+            }
+        }
+        size += padding;
+
+        // Allocate the buffer and write contents
+        buffer = ChannelBuffers.buffer(size);
+        // First byte: Version (2b), Padding (1b), RR count (5b)
+        byte b = packet.getVersion().getByte();
+        if (padding > 0) {
+            b |= 0x20;
+        }
+        b |= packet.getReceptionReportCount();
+        buffer.writeByte(b);
+        // Second byte: Packet Type
+        buffer.writeByte(packet.type.getByte());
+        // Third byte: total length of the packet, in multiples of 4 bytes (32bit words) - 1
+        int sizeInOctets = (size / 4) - 1;
+        buffer.writeShort(sizeInOctets);
+        // Next 24 bytes: ssrc, ntp timestamp, rtp timestamp, octet count, packet count
+        buffer.writeInt((int) packet.senderSsrc);
+        // Payload: report blocks
+        if (packet.getReceptionReportCount() > 0) {
+            for (ReceptionReport block : packet.receptionReports) {
+                buffer.writeBytes(block.encode());
+            }
+        }
+
+        if (padding > 0) {
+            // Final bytes: padding
+            for (int i = 0; i < (padding - 1); i++) {
+                buffer.writeByte(0x00);
+            }
+
+            // Final byte: the amount of padding bytes that should be discarded.
+            // Unless something's wrong, it will be a multiple of 4.
+            buffer.writeByte(padding);
+        }
+
+        return buffer;
+    }
+
     // ControlPacket --------------------------------------------------------------------------------------------------
 
     @Override
     public ChannelBuffer encode(int currentCompoundLength, int fixedBlockSize) {
-        return null;
+        return encode(currentCompoundLength, fixedBlockSize, this);
     }
 
     @Override
     public ChannelBuffer encode() {
-        return null;
-    }
-
-    // public methods -------------------------------------------------------------------------------------------------
-
-    public boolean addSenderReport(ReceptionReport block) {
-        if (this.receptionReports == null) {
-            this.receptionReports = new ArrayList<ReceptionReport>();
-            return this.receptionReports.add(block);
-        }
-
-        // 5 bits is the limit
-        return (this.receptionReports.size() < 31) && this.receptionReports.add(block);
-    }
-
-    public byte getReceptionReportCount() {
-        if (this.receptionReports == null) {
-            return 0;
-        }
-
-        return (byte) this.receptionReports.size();
-    }
-
-    // getters & setters ----------------------------------------------------------------------------------------------
-
-    public long getSenderSsrc() {
-        return senderSsrc;
-    }
-
-    public void setSenderSsrc(long senderSsrc) {
-        if ((senderSsrc < 0) || (senderSsrc > 0xffffffffL)) {
-            throw new IllegalArgumentException("Valid range for SSRC is [0;0xffffffff]");
-        }
-        this.senderSsrc = senderSsrc;
-    }
-
-    public List<ReceptionReport> getReceptionReports() {
-        if (this.receptionReports == null) {
-            return null;
-        }
-        return Collections.unmodifiableList(this.receptionReports);
-    }
-
-    public void setReceptionReports(List<ReceptionReport> receptionReports) {
-        if (receptionReports.size() >= 31) {
-            throw new IllegalArgumentException("At most 31 report blocks can be sent in a ReceiverReportPacket");
-        }
-        this.receptionReports = receptionReports;
+        return encode(0, 0, this);
     }
 
     // low level overrides --------------------------------------------------------------------------------------------

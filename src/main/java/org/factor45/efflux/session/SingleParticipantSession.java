@@ -50,7 +50,7 @@ public class SingleParticipantSession extends AbstractRtpSession {
 
     // configuration --------------------------------------------------------------------------------------------------
 
-    private final RtpParticipantContext context;
+    private final DefaultRtpParticipantContext context;
     private boolean ignoreFromUnknownSsrc;
 
     // internal vars --------------------------------------------------------------------------------------------------
@@ -62,7 +62,7 @@ public class SingleParticipantSession extends AbstractRtpSession {
     public SingleParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
                                     RtpParticipant remoteParticipant) {
         super(id, payloadType, localParticipant);
-        this.context = new RtpParticipantContext(remoteParticipant);
+        this.context = new DefaultRtpParticipantContext(remoteParticipant);
         this.receivedPackets = new AtomicBoolean(false);
         this.ignoreFromUnknownSsrc = IGNORE_FROM_UNKNOWN_SSRC;
     }
@@ -76,23 +76,23 @@ public class SingleParticipantSession extends AbstractRtpSession {
     }
 
     @Override
-    public RtpParticipant removeParticipant(long ssrc) {
+    public RtpParticipantContext removeParticipant(long ssrc) {
         // No can do.
         return null;
     }
 
     @Override
-    public RtpParticipant getRemoteParticipant(long ssrc) {
+    public RtpParticipantContext getRemoteParticipant(long ssrc) {
         if (ssrc == this.context.getParticipant().getSsrc()) {
-            return this.context.getParticipant();
+            return this.context;
         }
 
         return null;
     }
 
     @Override
-    public Collection<RtpParticipant> getRemoteParticipants() {
-        return Arrays.asList(this.context.getParticipant());
+    public Collection<RtpParticipantContext> getRemoteParticipants() {
+        return Arrays.<RtpParticipantContext>asList(this.context);
     }
 
     // AbstractRtpSession ---------------------------------------------------------------------------------------------
@@ -138,12 +138,7 @@ public class SingleParticipantSession extends AbstractRtpSession {
     // DataPacketReceiver ---------------------------------------------------------------------------------------------
 
     @Override
-    protected RtpParticipantContext getContext(SocketAddress origin, DataPacket packet) {
-        return this.context;
-    }
-
-    @Override
-    protected boolean doBeforeDataReceivedValidation(DataPacket packet) {
+    public void dataPacketReceived(SocketAddress origin, DataPacket packet) {
         if (!this.receivedPackets.getAndSet(true)) {
             // If this is the first packet then setup the SSRC for this participant (we didn't know it yet).
             this.context.getParticipant().updateSsrc(packet.getSsrc());
@@ -151,31 +146,28 @@ public class SingleParticipantSession extends AbstractRtpSession {
         } else if (this.ignoreFromUnknownSsrc && (packet.getSsrc() != this.context.getParticipant().getSsrc())) {
             LOG.trace("Discarded packet from unexpected SSRC: {} (expected was {}).",
                       packet.getSsrc(), this.context.getParticipant().getSsrc());
-            return false;
+            return;
         }
 
-        // From here on we know that either the packet came from the expected SSRC or that we don't care about SSRC.
-
-        return true;
+        super.dataPacketReceived(origin, packet);
     }
 
     @Override
-    protected boolean doAfterDataReceivedValidation(SocketAddress origin) {
-        return true;
+    protected DefaultRtpParticipantContext getOrCreateContextFromDataPacket(SocketAddress origin, DataPacket packet) {
+        if (packet.getSsrc() == this.context.getParticipant().getSsrc()) {
+            return this.context;
+        }
+
+        return null;
     }
 
-    // ControlPacketReceiver ------------------------------------------------------------------------------------------
-
     @Override
-    public void controlPacketReceived(SocketAddress origin, CompoundControlPacket packet) {
-        if (origin != this.context.getParticipant().getControlAddress()) {
-            this.context.getParticipant().updateRtcpAddress(origin);
-            LOG.debug("Updated remote participant's RTCP address to {} in RtpSession with id {}.", origin, this.id);
+    protected DefaultRtpParticipantContext getExistingContext(long ssrc) {
+        if (ssrc == this.context.getParticipant().getSsrc()) {
+            return this.context;
         }
 
-        for (RtpSessionControlListener listener : this.controlListeners) {
-            listener.controlPacketReceived(this, packet);
-        }
+        return null;
     }
 
     // getters & setters ----------------------------------------------------------------------------------------------

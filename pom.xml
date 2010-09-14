@@ -101,6 +101,18 @@
         </configuration>
       </plugin>
 
+      <!-- jar code -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>2.3.1</version>
+        <configuration>
+          <excludes>
+            <exclude>**/log4j.properties</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+
       <!-- tests -->
       <plugin>
         <artifactId>maven-surefire-plugin</artifactId>

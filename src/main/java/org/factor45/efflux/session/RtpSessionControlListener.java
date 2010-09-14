@@ -16,6 +16,7 @@
 
 package org.factor45.efflux.session;
 
+import org.factor45.efflux.packet.AppDataPacket;
 import org.factor45.efflux.packet.CompoundControlPacket;
 
 /**
@@ -24,4 +25,6 @@ import org.factor45.efflux.packet.CompoundControlPacket;
 public interface RtpSessionControlListener {
 
     void controlPacketReceived(RtpSession session, CompoundControlPacket packet);
+
+    void appDataReceived(RtpSession session, AppDataPacket appDataPacket);
 }

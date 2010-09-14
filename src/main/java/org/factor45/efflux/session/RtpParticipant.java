@@ -17,6 +17,9 @@
 package org.factor45.efflux.session;
 
 import org.factor45.efflux.packet.DataPacket;
+import org.factor45.efflux.packet.SdesChunk;
+import org.factor45.efflux.packet.SdesChunkItem;
+import org.factor45.efflux.packet.SdesChunkPrivItem;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -40,9 +43,11 @@ public class RtpParticipant {
     private String name;
     private String cname;
     private String email;
+    private String phone;
     private String location;
     private String tool;
     private String note;
+    private String privPrefix;
     private String priv;
 
     // constructors ---------------------------------------------------------------------------------------------------
@@ -73,9 +78,22 @@ public class RtpParticipant {
 
     public static RtpParticipant createFromUnexpectedDataPacket(InetSocketAddress origin, DataPacket packet) {
         RtpParticipant participant = new RtpParticipant();
+        // I know RFC states that we "MUST NOT" consider the origin IP as the destination for future packets, but it
+        // doesn't provide an alternative so yeah, I'll pretty much disregard the RFC here.
         participant.dataAddress = origin;
         participant.controlAddress = new InetSocketAddress(origin.getAddress(), origin.getPort() + 1);
         participant.ssrc = packet.getSsrc();
+        return participant;
+    }
+
+    public static RtpParticipant createFromSdesChunk(InetSocketAddress origin, SdesChunk chunk) {
+        RtpParticipant participant = new RtpParticipant();
+        // I know RFC states that we "MUST NOT" consider the origin IP as the destination for future packets, but it
+        // doesn't provide an alternative so yeah, I'll pretty much disregard the RFC here.
+        participant.dataAddress = new InetSocketAddress(origin.getAddress(), origin.getPort() - 1);
+        participant.controlAddress = origin;
+        participant.updateFromSdesChunk(chunk);
+
         return participant;
     }
 
@@ -97,11 +115,77 @@ public class RtpParticipant {
 
     // public methods -------------------------------------------------------------------------------------------------
 
-    public void updateRtpAddress(SocketAddress address) {
+    public boolean updateFromSdesChunk(SdesChunk chunk) {
+        boolean modified = false;
+        if (this.ssrc != chunk.getSsrc()) {
+            modified = true;
+        }
+        this.ssrc = chunk.getSsrc();
+        for (SdesChunkItem item : chunk.getItems()) {
+            switch (item.getType()) {
+                case CNAME:
+                    if (this.willCauseModification(this.cname, item.getValue())) {
+                        this.setCname(item.getValue());
+                        modified = true;
+                    }
+                    break;
+                case NAME:
+                    if (this.willCauseModification(this.name, item.getValue())) {
+                        this.setName(item.getValue());
+                        modified = true;
+                    }
+                    break;
+                case EMAIL:
+                    if (this.willCauseModification(this.email, item.getValue())) {
+                        this.setEmail(item.getValue());
+                        modified = true;
+                    }
+                    break;
+                case PHONE:
+                    if (this.willCauseModification(this.phone, item.getValue())) {
+                        this.setPhone(item.getValue());
+                        modified = true;
+                    }
+                    break;
+                case LOCATION:
+                    if (this.willCauseModification(this.location, item.getValue())) {
+                        this.setLocation(item.getValue());
+                        modified = true;
+                    }
+                    break;
+                case TOOL:
+                    if (this.willCauseModification(this.location, item.getValue())) {
+                        this.setTool(item.getValue());
+                        modified = true;
+                    }
+                    break;
+                case NOTE:
+                    if (this.willCauseModification(this.location, item.getValue())) {
+                        this.setNote(item.getValue());
+                        modified = true;
+                    }
+                    break;
+                case PRIV:
+                    String prefix = ((SdesChunkPrivItem) item).getPrefix();
+                    if (this.willCauseModification(this.privPrefix, prefix) ||
+                        this.willCauseModification(this.priv, item.getValue())) {
+                        this.setPriv(prefix, item.getValue());
+                        modified = true;
+                    }
+                    break;
+                default:
+                    // Never falls here...
+            }
+        }
+
+        return modified;
+    }
+
+    public void updateDataAddress(SocketAddress address) {
         this.dataAddress = address;
     }
 
-    public void updateRtcpAddress(SocketAddress address) {
+    public void updateControlAddress(SocketAddress address) {
         this.controlAddress = address;
     }
 
@@ -138,22 +222,28 @@ public class RtpParticipant {
         this.ssrc = ssrc;
     }
 
+    // private helpers ------------------------------------------------------------------------------------------------
+
+    private boolean willCauseModification(String originalValue, String newValue) {
+        return newValue != null && !newValue.equals(originalValue);
+    }
+
     // getters & setters ----------------------------------------------------------------------------------------------
 
     public SocketAddress getDataAddress() {
-        return dataAddress;
+        return this.dataAddress;
     }
 
     public SocketAddress getControlAddress() {
-        return controlAddress;
+        return this.controlAddress;
     }
 
     public long getSsrc() {
-        return ssrc;
+        return this.ssrc;
     }
 
     public String getCname() {
-        return cname;
+        return this.cname;
     }
 
     public void setCname(String cname) {
@@ -161,7 +251,7 @@ public class RtpParticipant {
     }
 
     public String getName() {
-        return name;
+        return this.name;
     }
 
     public void setName(String name) {
@@ -169,15 +259,23 @@ public class RtpParticipant {
     }
 
     public String getEmail() {
-        return email;
+        return this.email;
     }
 
     public void setEmail(String email) {
         this.email = email;
     }
 
+    public String getPhone() {
+        return this.phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
     public String getLocation() {
-        return location;
+        return this.location;
     }
 
     public void setLocation(String location) {
@@ -185,7 +283,7 @@ public class RtpParticipant {
     }
 
     public String getTool() {
-        return tool;
+        return this.tool;
     }
 
     public void setTool(String tool) {
@@ -193,56 +291,66 @@ public class RtpParticipant {
     }
 
     public String getNote() {
-        return note;
+        return this.note;
     }
 
     public void setNote(String note) {
         this.note = note;
     }
 
-    public String getPriv() {
-        return priv;
+    public String getPrivPrefix() {
+        return this.privPrefix;
     }
 
-    public void setPriv(String priv) {
+    public String getPriv() {
+        return this.priv;
+    }
+
+    public void setPriv(String prefix, String priv) {
+        this.privPrefix = prefix;
         this.priv = priv;
     }
 
     // low level overrides --------------------------------------------------------------------------------------------
 
-
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder()
                 .append("RtpParticipant{")
-                .append("ssrc=").append(ssrc)
-                .append(", dataAddress=").append(dataAddress)
-                .append(", controlAddress=").append(controlAddress);
+                .append("ssrc=").append(this.ssrc)
+                .append(", dataAddress=").append(this.dataAddress)
+                .append(", controlAddress=").append(this.controlAddress);
+
+        if (this.cname != null) {
+            builder.append(", cname='").append(this.cname).append('\'');
+        }
 
         if (this.name != null) {
-            builder.append(", name='").append(name).append('\'');
-        }
-        if (this.cname != null) {
-            builder.append(", cname='").append(cname).append('\'');
+            builder.append(", name='").append(this.name).append('\'');
         }
 
         if (this.email != null) {
-            builder.append(", email='").append(email).append('\'');
+            builder.append(", email='").append(this.email).append('\'');
+        }
+
+        if (this.phone != null) {
+            builder.append(", phone='").append(this.phone).append('\'');
         }
 
         if (this.location != null) {
-            builder.append(", location='").append(location).append('\'');
+            builder.append(", location='").append(this.location).append('\'');
         }
+
         if (this.tool != null) {
-            builder.append(", tool='").append(tool).append('\'');
+            builder.append(", tool='").append(this.tool).append('\'');
         }
 
         if (this.note != null) {
-            builder.append(", note='").append(note).append('\'');
+            builder.append(", note='").append(this.note).append('\'');
         }
 
         if (this.priv != null) {
-            builder.append(", priv='").append(priv).append('\'');
+            builder.append(", priv='").append(this.privPrefix).append(':').append(this.priv).append('\'');
         }
 
         return builder.append('}').toString();

@@ -19,24 +19,18 @@ package org.factor45.efflux.packet;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 /**
  * @author <a:mailto="bruno.carvalho@wit-software.com" />Bruno de Carvalho</a>
  */
-public class SenderReportPacket extends ControlPacket {
+public class SenderReportPacket extends AbstractReportPacket {
 
     // internal vars --------------------------------------------------------------------------------------------------
 
-    private long senderSsrc;
     // TODO this might not be a long...
     private long ntpTimestamp;
     private long rtpTimestamp;
     private long senderPacketCount;
     private long senderOctetCount;
-    private List<ReceptionReport> receptionReports;
 
     // constructors ---------------------------------------------------------------------------------------------------
 
@@ -155,38 +149,7 @@ public class SenderReportPacket extends ControlPacket {
         return encode(0, 0, this);
     }
 
-    // public methods -------------------------------------------------------------------------------------------------
-
-    public boolean addReceptionReportBlock(ReceptionReport block) {
-        if (this.receptionReports == null) {
-            this.receptionReports = new ArrayList<ReceptionReport>();
-            return this.receptionReports.add(block);
-        }
-
-        // 5 bits is the limit
-        return (this.receptionReports.size() < 31) && this.receptionReports.add(block);
-    }
-
-    public byte getReceptionReportCount() {
-        if (this.receptionReports == null) {
-            return 0;
-        }
-
-        return (byte) this.receptionReports.size();
-    }
-
     // getters & setters ----------------------------------------------------------------------------------------------
-
-    public long getSenderSsrc() {
-        return senderSsrc;
-    }
-
-    public void setSenderSsrc(long senderSsrc) {
-        if ((senderSsrc < 0) || (senderSsrc > 0xffffffffL)) {
-            throw new IllegalArgumentException("Valid range for SSRC is [0;0xffffffff]");
-        }
-        this.senderSsrc = senderSsrc;
-    }
 
     public long getNtpTimestamp() {
         return ntpTimestamp;
@@ -231,20 +194,6 @@ public class SenderReportPacket extends ControlPacket {
             throw new IllegalArgumentException("Valid range for Sender Octet Count is [0;0xffffffff]");
         }
         this.senderOctetCount = senderOctetCount;
-    }
-
-    public List<ReceptionReport> getReceptionReports() {
-        if (this.receptionReports == null) {
-            return null;
-        }
-        return Collections.unmodifiableList(this.receptionReports);
-    }
-
-    public void setReceptionReports(List<ReceptionReport> receptionReports) {
-        if (receptionReports.size() >= 31) {
-            throw new IllegalArgumentException("At most 31 report blocks can be sent in a SenderReportPacket");
-        }
-        this.receptionReports = receptionReports;
     }
 
     // low level overrides --------------------------------------------------------------------------------------------

@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-package org.factor45.efflux;
+package org.factor45.efflux.packet;
 
-import org.factor45.efflux.packet.DataPacket;
-import org.factor45.efflux.packet.RtpVersion;
 import org.factor45.efflux.util.ByteUtils;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.junit.Test;
@@ -29,7 +27,7 @@ import static org.junit.Assert.*;
 /**
  * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
-public class RtpPacketTest {
+public class DataPacketTest {
 
     public static final byte[] ALAW_RTP_PACKET_SAMPLE =
             {(byte) 0x80, (byte) 0x88, 0x19, 0x73, 0x00, 0x01, (byte) 0x95, 0x14, 0x1f, (byte) 0xcc, 0x77,
@@ -73,7 +71,6 @@ public class RtpPacketTest {
     public void testDecode() {
         DataPacket packet = DataPacket.decode(ALAW_RTP_PACKET_SAMPLE);
         assertEquals(RtpVersion.V2, packet.getVersion());
-        assertFalse(packet.hasPadding());
         assertFalse(packet.hasExtension());
         assertEquals(0, packet.getContributingSourcesCount());
         assertTrue(packet.hasMarker());
@@ -104,7 +101,6 @@ public class RtpPacketTest {
         packet.setVersion(RtpVersion.V2);
         packet.setMarker(true);
         packet.setPayloadType(98);
-        packet.setPadding(true);
         packet.setSequenceNumber(69);
         packet.setTimestamp(696969);
         packet.setSsrc(96);
@@ -141,7 +137,6 @@ public class RtpPacketTest {
 
         DataPacket packet = DataPacket.decode(h263packet);
         assertEquals(RtpVersion.V2, packet.getVersion());
-        assertFalse(packet.hasPadding());
         assertFalse(packet.hasExtension());
         assertTrue(packet.hasMarker());
         assertEquals(4664, packet.getSequenceNumber());
@@ -149,5 +144,34 @@ public class RtpPacketTest {
         assertEquals(0x4fbc4ca1, packet.getSsrc());
         assertEquals(1145 - 12, packet.getDataSize());
         System.err.println(packet);
+    }
+
+    @Test
+    public void testEncodeDecodeWithFixedBlockSize() {
+        DataPacket packet = new DataPacket();
+        packet.setMarker(true);
+        packet.setSsrc(0x45);
+        packet.setSequenceNumber(2);
+        packet.setPayloadType(8);
+        packet.setTimestamp(69);
+        packet.setData(new byte[]{0x45, 0x45, 0x45, 0x45, 0x45});
+        System.out.println("packet = " + packet);
+
+        ChannelBuffer encoded = packet.encode(64);
+        System.out.println(ByteUtils.writeArrayAsHex(encoded.array(), true));
+        assertEquals(64, encoded.readableBytes());
+
+        DataPacket decoded = DataPacket.decode(encoded);
+        assertEquals(0, encoded.readableBytes());
+
+        assertEquals(packet.hasMarker(), decoded.hasMarker());
+        assertEquals(packet.getSsrc(), decoded.getSsrc());
+        assertEquals(packet.getSequenceNumber(), decoded.getSequenceNumber());
+        assertEquals(packet.getPayloadType(), decoded.getPayloadType());
+        assertEquals(packet.getTimestamp(), decoded.getTimestamp());
+        assertNotNull(decoded.getData());
+        assertEquals(packet.getDataSize(), decoded.getDataSize());
+        assertTrue(Arrays.equals(packet.getDataAsArray(), decoded.getDataAsArray()));
+        System.out.println("decoded = " + decoded);
     }
 }

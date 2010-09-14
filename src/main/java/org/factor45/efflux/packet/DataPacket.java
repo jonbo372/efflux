@@ -44,8 +44,6 @@ import java.util.List;
  * |                        header extension                       |
  * |                             ....                              |
  *
- * // TODO padding, like RTCP.
- *
  * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
 public class DataPacket {
@@ -53,7 +51,6 @@ public class DataPacket {
     // internal vars --------------------------------------------------------------------------------------------------
 
     private RtpVersion version;
-    private boolean padding;
     private boolean marker;
     private int payloadType;
     private int sequenceNumber;
@@ -68,7 +65,7 @@ public class DataPacket {
     private ChannelBuffer data;
 
     // constructors ---------------------------------------------------------------------------------------------------
-    
+
     public DataPacket() {
         this.version = RtpVersion.V2;
     }
@@ -88,7 +85,7 @@ public class DataPacket {
         DataPacket packet = new DataPacket();
         byte b = buffer.readByte();
         packet.version = RtpVersion.fromByte(b);
-        packet.padding = (b & 0x20) > 0; // mask 0010 0000
+        boolean padding = (b & 0x20) > 0; // mask 0010 0000
         boolean extension = (b & 0x10) > 0; // mask 0001 0000
         int contributingSourcesCount = b & 0x0f; // mask 0000 1111
 
@@ -117,15 +114,25 @@ public class DataPacket {
             }
         }
 
-        // Assume remaining data is the packet
-        byte[] remainingBytes = new byte[buffer.readableBytes()];
-        buffer.readBytes(remainingBytes);
-        packet.setData(remainingBytes);
+        if (!padding) {
+            // No padding used, assume remaining data is the packet
+            byte[] remainingBytes = new byte[buffer.readableBytes()];
+            buffer.readBytes(remainingBytes);
+            packet.setData(remainingBytes);
+        } else {
+            // Padding bit was set, so last byte contains the number of padding octets that should be discarded.
+            short lastByte = buffer.getUnsignedByte(buffer.readerIndex() + buffer.readableBytes() - 1);
+            byte[] dataBytes = new byte[buffer.readableBytes() - lastByte];
+            buffer.readBytes(dataBytes);
+            packet.setData(dataBytes);
+            // Discard rest of buffer.
+            buffer.skipBytes(buffer.readableBytes());
+        }
 
         return packet;
     }
 
-    public static ChannelBuffer encode(DataPacket packet) {
+    public static ChannelBuffer encode(int fixedBlockSize, DataPacket packet) {
         int size = 12; // Fixed width
         if (packet.hasExtension()) {
             size += 4 + packet.getExtensionDataSize();
@@ -133,11 +140,25 @@ public class DataPacket {
         size += packet.getContributingSourcesCount() * 4;
         size += packet.getDataSize();
 
+        // If packet was configured to have padding (fixed block size), calculate padding and add it.
+        int padding = 0;
+        if (fixedBlockSize > 0) {
+            // If padding modulus is > 0 then the padding is equal to:
+            // (global size of the compound RTCP packet) mod (block size)
+            // Block size alignment might be necessary for some encryption algorithms
+            // RFC section 6.4.1
+            padding = fixedBlockSize - (size % fixedBlockSize);
+            if (padding == fixedBlockSize) {
+                padding = 0;
+            }
+        }
+        size += padding;
+
         ChannelBuffer buffer = ChannelBuffers.buffer(size);
 
         // Version, Padding, eXtension, CSRC Count
         byte b = packet.getVersion().getByte();
-        if (packet.hasPadding()) {
+        if (padding > 0) {
             b |= 0x20;
         }
         if (packet.hasExtension()) {
@@ -176,13 +197,28 @@ public class DataPacket {
             buffer.writeBytes(packet.data.array());
         }
 
+        if (padding > 0) {
+            // Final bytes: padding
+            for (int i = 0; i < (padding - 1); i++) {
+                buffer.writeByte(0x00);
+            }
+
+            // Final byte: the amount of padding bytes that should be discarded.
+            // Unless something's wrong, it will be a multiple of 4.
+            buffer.writeByte(padding);
+        }
+
         return buffer;
     }
 
     // public methods -------------------------------------------------------------------------------------------------
 
+    public ChannelBuffer encode(int fixedBlockSize) {
+        return encode(fixedBlockSize, this);
+    }
+
     public ChannelBuffer encode() {
-        return encode(this);
+        return encode(0, this);
     }
 
     public void addContributingSourceId(long contributingSourceId) {
@@ -236,14 +272,6 @@ public class DataPacket {
             throw new IllegalArgumentException("Only V2 is supported");
         }
         this.version = version;
-    }
-
-    public boolean hasPadding() {
-        return padding;
-    }
-
-    public void setPadding(boolean padding) {
-        this.padding = padding;
     }
 
     public boolean hasExtension() {
@@ -334,7 +362,6 @@ public class DataPacket {
     public String toString() {
         return new StringBuilder()
                 .append("DataPacket{V=").append(this.version)
-                .append(", P=").append(this.padding)
                 .append(", X=").append(this.hasExtension())
                 .append(", CC=").append(this.getContributingSourcesCount())
                 .append(", M=").append(this.marker)

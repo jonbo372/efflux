@@ -16,17 +16,8 @@
 
 package org.factor45.efflux.session;
 
-import org.factor45.efflux.packet.CompoundControlPacket;
-import org.factor45.efflux.packet.ControlPacket;
-import org.factor45.efflux.packet.DataPacket;
-
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A regular RTP session, as described in RFC3550.
@@ -46,142 +37,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class MultiParticipantSession extends AbstractRtpSession {
 
-    // internal vars --------------------------------------------------------------------------------------------------
-
-    private final Map<Long, RtpParticipantContext> participantTable;
-
     // constructors ---------------------------------------------------------------------------------------------------
 
     public MultiParticipantSession(String id, int payloadType, RtpParticipant localParticipant) {
         super(id, payloadType, localParticipant);
-
-        this.participantTable = new ConcurrentHashMap<Long, RtpParticipantContext>();
-    }
-
-    // RtpSession -----------------------------------------------------------------------------------------------------
-
-    @Override
-    public boolean addParticipant(RtpParticipant remoteParticipant) {
-        if (remoteParticipant.getSsrc() == this.localParticipant.getSsrc()) {
-            return false;
-        }
-
-        RtpParticipantContext context = this.participantTable.get(remoteParticipant.getSsrc());
-        if (context == null) {
-            context = new RtpParticipantContext(remoteParticipant);
-            this.participantTable.put(remoteParticipant.getSsrc(), context);
-            return true;
-        }
-
-        return false;
-    }
-
-    @Override
-    public RtpParticipant removeParticipant(long ssrc) {
-        RtpParticipantContext context = this.participantTable.remove(ssrc);
-        if (context == null) {
-            return null;
-        }
-
-        return context.getParticipant();
-    }
-
-    @Override
-    public RtpParticipant getRemoteParticipant(long ssrc) {
-        RtpParticipantContext context = this.participantTable.get(ssrc);
-        if (context == null) {
-            return null;
-        }
-
-        return context.getParticipant();
-    }
-
-    @Override
-    public Collection<RtpParticipant> getRemoteParticipants() {
-        Collection<RtpParticipant> participants = new ArrayList<RtpParticipant>(this.participantTable.size());
-        for (RtpParticipantContext context : this.participantTable.values()) {
-            participants.add(context.getParticipant());
-        }
-
-        return participants;
-    }
-
-    // AbstractRtpSession ---------------------------------------------------------------------------------------------
-
-    @Override
-    protected boolean internalSendData(DataPacket packet) {
-        try {
-            for (RtpParticipantContext context : this.participantTable.values()) {
-                this.writeToData(packet, context.getParticipant().getDataAddress());
-            }
-            return true;
-        } catch (Exception e) {
-            LOG.error("Failed to send RTP packet to participants in session with id {}.", this.id);
-            return false;
-        }
-    }
-
-    @Override
-    protected boolean internalSendControl(ControlPacket packet) {
-        try {
-            for (RtpParticipantContext context : this.participantTable.values()) {
-                this.writeToControl(packet, context.getParticipant().getDataAddress());
-            }
-            return true;
-        } catch (Exception e) {
-            LOG.error("Failed to send RTCP packet to participants in session with id {}.", this.id);
-            return false;
-        }
-    }
-
-
-    @Override
-    protected boolean internalSendControl(CompoundControlPacket packet) {
-        try {
-            for (RtpParticipantContext context : this.participantTable.values()) {
-                this.writeToControl(packet, context.getParticipant().getDataAddress());
-            }
-            return true;
-        } catch (Exception e) {
-            LOG.error("Failed to send RTCP compound packet to participants in session with id {}.", this.id);
-            return false;
-        }
-    }
-
-    @Override
-    protected RtpParticipantContext getContext(SocketAddress origin, DataPacket packet) {
-        // Get or create.
-        RtpParticipantContext context = this.participantTable.get(packet.getSsrc());
-        if (context == null) {
-            // New participant
-            RtpParticipant participant = RtpParticipant.createFromUnexpectedDataPacket((InetSocketAddress) origin, packet);
-            context = new RtpParticipantContext(participant);
-            this.participantTable.put(participant.getSsrc(), context);
-
-            LOG.debug("New participant joined session with id {} (from data packet): {}.", this.id, participant);
-            for (RtpSessionEventListener listener : this.eventListeners) {
-                listener.participantJoinedFromData(this, participant, packet);
-            }
-        }
-
-        return context;
-    }
-
-    @Override
-    protected boolean doBeforeDataReceivedValidation(DataPacket packet) {
-        return true;
-    }
-
-    @Override
-    protected boolean doAfterDataReceivedValidation(SocketAddress origin) {
-        return true;
-    }
-
-    // ControlPacketReceiver ------------------------------------------------------------------------------------------
-
-    @Override
-    public void controlPacketReceived(SocketAddress origin, CompoundControlPacket packet) {
-
     }
 
     // getters & setters ----------------------------------------------------------------------------------------------
@@ -191,6 +50,6 @@ public class MultiParticipantSession extends AbstractRtpSession {
     }
 
     public Map<Long, RtpParticipantContext> getParticipantTable() {
-        return Collections.unmodifiableMap(this.participantTable);
+        return Collections.<Long, RtpParticipantContext>unmodifiableMap(this.participantTable);
     }
 }

@@ -17,6 +17,7 @@
 package org.factor45.efflux.session;
 
 import org.factor45.efflux.packet.DataPacket;
+import org.factor45.efflux.packet.SdesChunk;
 import org.junit.After;
 import org.junit.Test;
 
@@ -55,7 +56,11 @@ public class MultiParticipantSessionTest {
             }
 
             @Override
-            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant, DataPacket packet) {
+            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant, SdesChunk chunk) {
+            }
+
+            @Override
+            public void participantDataUpdated(RtpSession session, RtpParticipant participant) {
             }
 
             @Override
@@ -64,6 +69,11 @@ public class MultiParticipantSessionTest {
 
             @Override
             public void resolvedSsrcConflict(RtpSession session, long oldSsrc, long newSsrc) {
+            }
+
+            @Override
+            public void sessionTerminated(RtpSession session, Throwable cause) {
+                System.err.println("Session terminated: " + cause.getMessage());
             }
         });
 

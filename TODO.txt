@@ -1,0 +1,5 @@
+* Finish off automated RTCP handling
+* Update local sender statistics
+* Process receiver reports and fire events related to traffic conditions changing
+* RTCP bandwidth adjustment
+* Automated sending of SR/RR packets

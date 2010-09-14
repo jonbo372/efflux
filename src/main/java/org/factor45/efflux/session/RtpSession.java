@@ -37,7 +37,7 @@ public interface RtpSession extends DataPacketReceiver, ControlPacketReceiver {
 
     void terminate();
 
-    boolean sendData(byte[] data, long timestamp);
+    boolean sendData(byte[] data, long timestamp, boolean marked);
 
     boolean sendDataPacket(DataPacket packet);
 
@@ -45,15 +45,15 @@ public interface RtpSession extends DataPacketReceiver, ControlPacketReceiver {
 
     boolean sendControlPacket(CompoundControlPacket packet);
 
-    boolean addParticipant(RtpParticipant remoteParticipant);
-
-    RtpParticipant removeParticipant(long ssrc);
-
     RtpParticipant getLocalParticipant();
 
-    RtpParticipant getRemoteParticipant(long ssrsc);
+    boolean addParticipant(RtpParticipant remoteParticipant);
 
-    Collection<RtpParticipant> getRemoteParticipants();
+    RtpParticipantContext removeParticipant(long ssrc);
+
+    RtpParticipantContext getRemoteParticipant(long ssrsc);
+
+    Collection<RtpParticipantContext> getRemoteParticipants();
 
     void addDataListener(RtpSessionDataListener listener);
 

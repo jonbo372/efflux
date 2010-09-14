@@ -86,7 +86,7 @@ public class MultiParticipantSessionFunctionalTest {
         }
 
         for (byte i = 0; i < N; i++) {
-            this.sessions[i].sendData(new byte[]{(byte) 0xde, (byte) 0xad, (byte) 0xbe, (byte) 0xef}, i);
+            this.sessions[i].sendData(new byte[]{(byte) 0xde, (byte) 0xad, (byte) 0xbe, (byte) 0xef}, i, false);
         }
 
         latch.await(5000L, TimeUnit.MILLISECONDS);

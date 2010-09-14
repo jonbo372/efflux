@@ -17,6 +17,7 @@
 package org.factor45.efflux.session;
 
 import org.factor45.efflux.packet.DataPacket;
+import org.factor45.efflux.packet.SdesChunk;
 import org.junit.After;
 import org.junit.Test;
 
@@ -167,7 +168,7 @@ public class SingleParticipantSessionFunctionalTest {
         this.session2 = new SingleParticipantSession("Session2", 8, local2, remote2) {
             @Override
             public boolean sendDataPacket(DataPacket packet) {
-                if (!this.initialised) {
+                if (!this.running) {
                     return false;
                 }
 
@@ -214,7 +215,11 @@ public class SingleParticipantSessionFunctionalTest {
             }
 
             @Override
-            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant, DataPacket packet) {
+            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant, SdesChunk chunk) {
+            }
+
+            @Override
+            public void participantDataUpdated(RtpSession session, RtpParticipant participant) {
             }
 
             @Override
@@ -225,6 +230,11 @@ public class SingleParticipantSessionFunctionalTest {
             public void resolvedSsrcConflict(RtpSession session, long oldSsrc, long newSsrc) {
                 System.err.println("Resolved SSRC conflict, local SSRC was " + oldSsrc + " and now is " + newSsrc);
                 latch.countDown();
+            }
+            
+            @Override
+            public void sessionTerminated(RtpSession session, Throwable cause) {
+                System.err.println("Session terminated: " + cause.getMessage());
             }
         });
 
@@ -241,14 +251,14 @@ public class SingleParticipantSessionFunctionalTest {
         });
 
         long oldSsrc = this.session1.getLocalParticipant().getSsrc();
-        assertTrue(this.session2.sendData(new byte[]{0x45, 0x45, 0x45, 0x45}, 6969));
+        assertTrue(this.session2.sendData(new byte[]{0x45, 0x45, 0x45, 0x45}, 6969, false));
 
         assertTrue(latch.await(1000L, TimeUnit.MILLISECONDS));
 
         // Make sure SSRC was updated and send it to S1 to ensure it received the expected SSRC
         assertTrue(oldSsrc != this.session1.getLocalParticipant().getSsrc());
         assertEquals(1, this.session2.getRemoteParticipant().getSsrc());
-        assertTrue(this.session1.sendData(new byte[]{0x45, 0x45, 0x45, 0x45}, 6969));
+        assertTrue(this.session1.sendData(new byte[]{0x45, 0x45, 0x45, 0x45}, 6969, false));
 
         assertTrue(latch2.await(1000L, TimeUnit.MILLISECONDS));
 

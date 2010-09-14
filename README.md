@@ -3,7 +3,7 @@ efflux
 
 A Java RTP stack
 ----------------
-**efflux** is a simple Java RTP stack, whose purpose are applications who do not directly generate RTP content themselves but need to send or receive data using this protocol.
+**efflux** is a simple Java RTP stack, whose target are applications who do not directly generate RTP content themselves but need to send or receive data using this protocol.
 It aims to be fully RFC compliant but has utilities for those special cases where the other end doesn't quite follow the RFC (which, sadly, happens often).
 
 Project page: [http://efflux.factor45.org](http://efflux.factor45.org)

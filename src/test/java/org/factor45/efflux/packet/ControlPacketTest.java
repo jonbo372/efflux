@@ -19,7 +19,6 @@ package org.factor45.efflux.packet;
 import org.factor45.efflux.util.ByteUtils;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
