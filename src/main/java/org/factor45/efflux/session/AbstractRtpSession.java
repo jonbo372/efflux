@@ -67,7 +67,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     // constants ------------------------------------------------------------------------------------------------------
 
     protected static final Logger LOG = Logger.getLogger(SingleParticipantSession.class);
-    protected static final String VERSION = "efflux_0.2_13092010";
+    protected static final String VERSION = "efflux_0.3_14092010";
 
     // configuration defaults -----------------------------------------------------------------------------------------
 

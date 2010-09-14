@@ -1,8 +1,10 @@
 efflux
 ======
 
-0.3.0
+0.4.0
 -----
 * First release!
-* By-the-book multiple participant RTP session
+* Multiple participant RTP session
 * Special purpose two-way session (NAT tolerant)
+* Automated RTCP handling (leaving, joining, handling new participants, processing and sending reports)
+* Adaptative RTCP bandwidth usage
