@@ -19,10 +19,14 @@ package org.factor45.efflux.session;
 import org.factor45.efflux.packet.CompoundControlPacket;
 import org.factor45.efflux.packet.ControlPacket;
 import org.factor45.efflux.packet.DataPacket;
+import org.factor45.efflux.participant.ParticipantDatabase;
+import org.factor45.efflux.participant.RtpParticipant;
+import org.factor45.efflux.participant.RtpParticipantInfo;
+import org.factor45.efflux.participant.SingleParticipantDatabase;
 
 import java.net.SocketAddress;
-import java.util.Arrays;
-import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -50,7 +54,7 @@ public class SingleParticipantSession extends AbstractRtpSession {
 
     // configuration --------------------------------------------------------------------------------------------------
 
-    private final DefaultRtpParticipantContext context;
+    private final RtpParticipant receiver;
     private boolean ignoreFromUnknownSsrc;
 
     // internal vars --------------------------------------------------------------------------------------------------
@@ -62,7 +66,10 @@ public class SingleParticipantSession extends AbstractRtpSession {
     public SingleParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
                                     RtpParticipant remoteParticipant) {
         super(id, payloadType, localParticipant);
-        this.context = new DefaultRtpParticipantContext(remoteParticipant);
+        if (!remoteParticipant.isReceiver()) {
+            throw new IllegalArgumentException("Remote participant must be a receiver (data & control addresses set)");
+        }
+        this.receiver = remoteParticipant;
         this.receivedPackets = new AtomicBoolean(false);
         this.ignoreFromUnknownSsrc = IGNORE_FROM_UNKNOWN_SSRC;
     }
@@ -70,68 +77,73 @@ public class SingleParticipantSession extends AbstractRtpSession {
     // RtpSession -----------------------------------------------------------------------------------------------------
 
     @Override
-    public boolean addParticipant(RtpParticipant remoteParticipant) {
+    public boolean addReceiver(RtpParticipant remoteParticipant) {
+        if (this.receiver.equals(remoteParticipant)) {
+            return true;
+        }
+
         // Sorry, "there can be only one".
         return false;
     }
 
     @Override
-    public RtpParticipantContext removeParticipant(long ssrc) {
+    public boolean removeReceiver(RtpParticipant remoteParticipant) {
         // No can do.
-        return null;
+        return false;
     }
 
     @Override
-    public RtpParticipantContext getRemoteParticipant(long ssrc) {
-        if (ssrc == this.context.getParticipant().getSsrc()) {
-            return this.context;
+    public RtpParticipant getRemoteParticipant(long ssrc) {
+        if (ssrc == this.receiver.getInfo().getSsrc()) {
+            return this.receiver;
         }
 
         return null;
     }
 
     @Override
-    public Collection<RtpParticipantContext> getRemoteParticipants() {
-        return Arrays.<RtpParticipantContext>asList(this.context);
+    public Map<Long, RtpParticipant> getRemoteParticipants() {
+        Map<Long, RtpParticipant> map = new HashMap<Long, RtpParticipant>();
+        map.put(this.receiver.getSsrc(), this.receiver);
+        return map;
     }
 
     // AbstractRtpSession ---------------------------------------------------------------------------------------------
 
     @Override
-    protected boolean internalSendData(DataPacket packet) {
+    protected ParticipantDatabase createDatabase() {
+        return new SingleParticipantDatabase(this.id, this.receiver);
+    }
+
+    @Override
+    protected void internalSendData(DataPacket packet) {
         try {
-            this.writeToData(packet, this.context.getParticipant().getDataAddress());
+            this.writeToData(packet, this.receiver.getDataDestination());
             this.sentOrReceivedPackets.set(true);
-            return true;
         } catch (Exception e) {
-            LOG.error("Failed to send {} to {} in session with id {}.", this.id, this.context.getParticipant());
-            return false;
+            LOG.error("Failed to send {} to {} in session with id {}.", this.id, this.receiver.getInfo());
         }
     }
 
     @Override
-    protected boolean internalSendControl(ControlPacket packet) {
+    protected void internalSendControl(ControlPacket packet) {
         try {
-            this.writeToControl(packet, this.context.getParticipant().getControlAddress());
+            this.writeToControl(packet, this.receiver.getControlDestination());
             this.sentOrReceivedPackets.set(true);
-            return true;
         } catch (Exception e) {
             LOG.error("Failed to send RTCP packet to {} in session with id {}.",
-                      this.context.getParticipant(), this.id);
-            return false;
+                      this.receiver.getInfo(), this.id);
         }
     }
 
     @Override
-    protected boolean internalSendControl(CompoundControlPacket packet) {
+    protected void internalSendControl(CompoundControlPacket packet) {
         try {
-            this.writeToControl(packet, this.context.getParticipant().getControlAddress());
+            this.writeToControl(packet, this.receiver.getControlDestination());
             this.sentOrReceivedPackets.set(true);
-            return true;
         } catch (Exception e) {
             LOG.error("Failed to send compound RTCP packet to {} in session with id {}.",
-                      this.context.getParticipant(), this.id);
-            return false;
+                      this.receiver.getInfo(), this.id);
         }
     }
 
@@ -141,39 +153,21 @@ public class SingleParticipantSession extends AbstractRtpSession {
     public void dataPacketReceived(SocketAddress origin, DataPacket packet) {
         if (!this.receivedPackets.getAndSet(true)) {
             // If this is the first packet then setup the SSRC for this participant (we didn't know it yet).
-            this.context.getParticipant().updateSsrc(packet.getSsrc());
+            this.receiver.getInfo().setSsrc(packet.getSsrc());
             LOG.trace("First packet received from remote source, updated SSRC to {}.", packet.getSsrc());
-        } else if (this.ignoreFromUnknownSsrc && (packet.getSsrc() != this.context.getParticipant().getSsrc())) {
+        } else if (this.ignoreFromUnknownSsrc && (packet.getSsrc() != this.receiver.getInfo().getSsrc())) {
             LOG.trace("Discarded packet from unexpected SSRC: {} (expected was {}).",
-                      packet.getSsrc(), this.context.getParticipant().getSsrc());
+                      packet.getSsrc(), this.receiver.getInfo().getSsrc());
             return;
         }
 
         super.dataPacketReceived(origin, packet);
     }
 
-    @Override
-    protected DefaultRtpParticipantContext getOrCreateContextFromDataPacket(SocketAddress origin, DataPacket packet) {
-        if (packet.getSsrc() == this.context.getParticipant().getSsrc()) {
-            return this.context;
-        }
-
-        return null;
-    }
-
-    @Override
-    protected DefaultRtpParticipantContext getExistingContext(long ssrc) {
-        if (ssrc == this.context.getParticipant().getSsrc()) {
-            return this.context;
-        }
-
-        return null;
-    }
-
     // getters & setters ----------------------------------------------------------------------------------------------
 
-    public RtpParticipant getRemoteParticipant() {
-        return this.context.getParticipant();
+    public RtpParticipantInfo getRemoteParticipant() {
+        return this.receiver.getInfo();
     }
 
     public boolean isIgnoreFromUnknownSsrc() {

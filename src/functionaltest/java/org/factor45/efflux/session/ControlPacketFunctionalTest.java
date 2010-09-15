@@ -23,6 +23,7 @@ import org.factor45.efflux.packet.DataPacket;
 import org.factor45.efflux.packet.SdesChunk;
 import org.factor45.efflux.packet.SdesChunkItems;
 import org.factor45.efflux.packet.SourceDescriptionPacket;
+import org.factor45.efflux.participant.RtpParticipantInfo;
 import org.junit.After;
 import org.junit.Test;
 
@@ -55,8 +56,8 @@ public class ControlPacketFunctionalTest {
     public void testSendAndReceive() {
         final CountDownLatch latch = new CountDownLatch(2);
 
-        RtpParticipant local1 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
-        RtpParticipant remote1 = new RtpParticipant("127.0.0.1", 7000, 7001, 2);
+        RtpParticipantInfo local1 = new RtpParticipantInfo("127.0.0.1", 6000, 6001, 1);
+        RtpParticipantInfo remote1 = new RtpParticipantInfo("127.0.0.1", 7000, 7001, 2);
         this.session1 = new SingleParticipantSession("Session1", 8, local1, remote1);
         this.session1.setAutomatedRtcpHandling(false);
         assertTrue(this.session1.init());
@@ -73,8 +74,8 @@ public class ControlPacketFunctionalTest {
             }
         });
 
-        RtpParticipant local2 = new RtpParticipant("127.0.0.1", 7000, 7001, 2);
-        RtpParticipant remote2 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
+        RtpParticipantInfo local2 = new RtpParticipantInfo("127.0.0.1", 7000, 7001, 2);
+        RtpParticipantInfo remote2 = new RtpParticipantInfo("127.0.0.1", 6000, 6001, 1);
         this.session2 = new SingleParticipantSession("Session2", 8, local2, remote2);
         this.session2.setAutomatedRtcpHandling(false);
         assertTrue(this.session2.init());
@@ -106,7 +107,7 @@ public class ControlPacketFunctionalTest {
     public void testSendAndNotReceiveForAutomatedRtcpSession() {
         final CountDownLatch latch = new CountDownLatch(1);
 
-        RtpParticipant local1 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
+        RtpParticipantInfo local1 = new RtpParticipantInfo("127.0.0.1", 6000, 6001, 1);
         this.session1 = new MultiParticipantSession("Session1", 8, local1);
         this.session1.setAutomatedRtcpHandling(true);
         assertTrue(this.session1.init());
@@ -122,8 +123,8 @@ public class ControlPacketFunctionalTest {
             }
         });
 
-        RtpParticipant local2 = new RtpParticipant("127.0.0.1", 7000, 7001, 2);
-        RtpParticipant remote2 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
+        RtpParticipantInfo local2 = new RtpParticipantInfo("127.0.0.1", 7000, 7001, 2);
+        RtpParticipantInfo remote2 = new RtpParticipantInfo("127.0.0.1", 6000, 6001, 1);
         this.session2 = new SingleParticipantSession("Session2", 8, local2, remote2);
         this.session2.setAutomatedRtcpHandling(false);
         assertTrue(this.session2.init());
@@ -155,27 +156,27 @@ public class ControlPacketFunctionalTest {
     public void testSendSdesAndByePackets() throws Exception {
         final CountDownLatch latch = new CountDownLatch(2);
 
-        RtpParticipant local1 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
+        RtpParticipantInfo local1 = new RtpParticipantInfo("127.0.0.1", 6000, 6001, 1);
         this.session1 = new MultiParticipantSession("Session1", 8, local1);
         this.session1.addEventListener(new RtpSessionEventListener() {
             @Override
-            public void participantJoinedFromData(RtpSession session, RtpParticipant participant, DataPacket packet) {
+            public void participantJoinedFromData(RtpSession session, RtpParticipantInfo participant, DataPacket packet) {
                 fail("Unexpected event triggered.");
             }
 
             @Override
-            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant, SdesChunk chunk) {
+            public void participantJoinedFromControl(RtpSession session, RtpParticipantInfo participant, SdesChunk chunk) {
                 System.err.println("Participant joined from SDES chunk: " + chunk);
                 latch.countDown();
             }
 
             @Override
-            public void participantDataUpdated(RtpSession session, RtpParticipant participant) {
+            public void participantDataUpdated(RtpSession session, RtpParticipantInfo participant) {
                 fail("Unexpected event triggered.");
             }
 
             @Override
-            public void participantLeft(RtpSession session, RtpParticipant participant) {
+            public void participantLeft(RtpSession session, RtpParticipantInfo participant) {
                 System.err.println("Participant left: " + participant);
                 latch.countDown();
             }
@@ -192,7 +193,7 @@ public class ControlPacketFunctionalTest {
         });
         assertTrue(this.session1.init());
 
-        RtpParticipant local2 = new RtpParticipant("127.0.0.1", 7000, 7001, 2);
+        RtpParticipantInfo local2 = new RtpParticipantInfo("127.0.0.1", 7000, 7001, 2);
         this.session2 = new MultiParticipantSession("Session2", 8, local2);
         this.session2.addParticipant(local1);
         assertTrue(this.session2.init());
@@ -210,28 +211,28 @@ public class ControlPacketFunctionalTest {
     public void testUpdateSdes() throws Exception {
         final CountDownLatch latch = new CountDownLatch(2);
 
-        RtpParticipant local1 = new RtpParticipant("127.0.0.1", 6000, 6001, 1);
+        RtpParticipantInfo local1 = new RtpParticipantInfo("127.0.0.1", 6000, 6001, 1);
         this.session1 = new MultiParticipantSession("Session1", 8, local1);
         this.session1.addEventListener(new RtpSessionEventListener() {
             @Override
-            public void participantJoinedFromData(RtpSession session, RtpParticipant participant, DataPacket packet) {
+            public void participantJoinedFromData(RtpSession session, RtpParticipantInfo participant, DataPacket packet) {
                 System.err.println("Participant joined from DataPacket: " + packet);
                 latch.countDown();
             }
 
             @Override
-            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant, SdesChunk chunk) {
+            public void participantJoinedFromControl(RtpSession session, RtpParticipantInfo participant, SdesChunk chunk) {
                 fail("Unexpected packet received");
             }
 
             @Override
-            public void participantDataUpdated(RtpSession session, RtpParticipant participant) {
+            public void participantDataUpdated(RtpSession session, RtpParticipantInfo participant) {
                 System.err.println("Participant information updated: " + participant);
                 latch.countDown();
             }
 
             @Override
-            public void participantLeft(RtpSession session, RtpParticipant participant) {
+            public void participantLeft(RtpSession session, RtpParticipantInfo participant) {
                 System.err.println("Participant left: " + participant);
             }
 
@@ -246,7 +247,7 @@ public class ControlPacketFunctionalTest {
         });
         assertTrue(this.session1.init());
 
-        RtpParticipant local2 = new RtpParticipant("127.0.0.1", 7000, 7001, 2);
+        RtpParticipantInfo local2 = new RtpParticipantInfo("127.0.0.1", 7000, 7001, 2);
         this.session2 = new MultiParticipantSession("Session2", 8, local2);
         this.session2.addParticipant(local1);
         this.session2.setAutomatedRtcpHandling(false);
@@ -272,7 +273,7 @@ public class ControlPacketFunctionalTest {
 
         RtpParticipantContext context = this.session1.getRemoteParticipant(2);
         assertNotNull(context);
-        RtpParticipant participant = context.getParticipant();
+        RtpParticipantInfo participant = context.getParticipant();
         assertEquals(2, participant.getSsrc());
         assertEquals("session2@127.0.0.1:7000", participant.getCname());
         assertEquals("session2", participant.getName());

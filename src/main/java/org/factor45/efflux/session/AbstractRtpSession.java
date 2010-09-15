@@ -35,6 +35,10 @@ import org.factor45.efflux.packet.SdesChunk;
 import org.factor45.efflux.packet.SdesChunkItems;
 import org.factor45.efflux.packet.SenderReportPacket;
 import org.factor45.efflux.packet.SourceDescriptionPacket;
+import org.factor45.efflux.participant.ParticipantDatabase;
+import org.factor45.efflux.participant.ParticipantOperation;
+import org.factor45.efflux.participant.RtpParticipant;
+import org.factor45.efflux.participant.RtpParticipantInfo;
 import org.jboss.netty.bootstrap.ConnectionlessBootstrap;
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelPipelineFactory;
@@ -45,18 +49,15 @@ import org.jboss.netty.channel.socket.DatagramChannelFactory;
 import org.jboss.netty.channel.socket.nio.NioDatagramChannelFactory;
 import org.jboss.netty.channel.socket.oio.OioDatagramChannelFactory;
 
-import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -67,7 +68,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     // constants ------------------------------------------------------------------------------------------------------
 
     protected static final Logger LOG = Logger.getLogger(SingleParticipantSession.class);
-    protected static final String VERSION = "efflux_0.3_14092010";
+    protected static final String VERSION = "efflux_0.4_15092010";
 
     // configuration defaults -----------------------------------------------------------------------------------------
 
@@ -78,6 +79,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     protected static final int RECEIVE_BUFFER_SIZE = 1500;
     protected static final int MAX_COLLISIONS_BEFORE_CONSIDERING_LOOP = 3;
     protected static final boolean AUTOMATED_RTCP_HANDLING = true;
+    protected static final boolean UPDATE_DESTINATION_FROM_ORIGIN = true;
 
     // configuration --------------------------------------------------------------------------------------------------
 
@@ -89,11 +91,12 @@ public abstract class AbstractRtpSession implements RtpSession {
     protected int receiveBufferSize;
     protected int maxCollisionsBeforeConsideringLoop;
     protected boolean automatedRtcpHandling;
+    protected boolean updateDestinationFromOrigin;
 
     // internal vars --------------------------------------------------------------------------------------------------
 
     protected final RtpParticipant localParticipant;
-    protected final Map<Long, DefaultRtpParticipantContext> participantTable;
+    protected final ParticipantDatabase participantDatabase;
     protected final List<RtpSessionDataListener> dataListeners;
     protected final List<RtpSessionControlListener> controlListeners;
     protected final List<RtpSessionEventListener> eventListeners;
@@ -107,6 +110,8 @@ public abstract class AbstractRtpSession implements RtpSession {
     protected final AtomicBoolean sentOrReceivedPackets;
     protected final ReentrantReadWriteLock lock;
     protected final AtomicInteger collisions;
+    protected final AtomicLong sentByteCounter;
+    protected final AtomicLong sentPacketCounter;
 
     // constructors ---------------------------------------------------------------------------------------------------
 
@@ -118,7 +123,7 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.id = id;
         this.payloadType = payloadType;
         this.localParticipant = local;
-        this.participantTable = new HashMap<Long, DefaultRtpParticipantContext>();
+        this.participantDatabase = this.createDatabase();
 
         this.dataListeners = new CopyOnWriteArrayList<RtpSessionDataListener>();
         this.controlListeners = new CopyOnWriteArrayList<RtpSessionControlListener>();
@@ -127,6 +132,8 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.sentOrReceivedPackets = new AtomicBoolean(false);
         this.lock = new ReentrantReadWriteLock();
         this.collisions = new AtomicInteger(0);
+        this.sentPacketCounter = new AtomicLong(0);
+        this.sentByteCounter = new AtomicLong(0);
 
         this.useNio = USE_NIO;
         this.discardOutOfOrder = DISCARD_OUT_OF_ORDER;
@@ -134,6 +141,7 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.receiveBufferSize = RECEIVE_BUFFER_SIZE;
         this.maxCollisionsBeforeConsideringLoop = MAX_COLLISIONS_BEFORE_CONSIDERING_LOOP;
         this.automatedRtcpHandling = AUTOMATED_RTCP_HANDLING;
+        this.updateDestinationFromOrigin = UPDATE_DESTINATION_FROM_ORIGIN;
     }
 
     // RtpSession -----------------------------------------------------------------------------------------------------
@@ -182,8 +190,8 @@ public abstract class AbstractRtpSession implements RtpSession {
             }
         });
 
-        SocketAddress dataAddress = this.localParticipant.getDataAddress();
-        SocketAddress controlAddress = this.localParticipant.getControlAddress();
+        SocketAddress dataAddress = this.localParticipant.getDataDestination();
+        SocketAddress controlAddress = this.localParticipant.getControlDestination();
 
         try {
             this.dataChannel = (DatagramChannel) this.dataBootstrap.bind(dataAddress);
@@ -238,7 +246,8 @@ public abstract class AbstractRtpSession implements RtpSession {
         packet.setPayloadType(this.payloadType);
         packet.setSsrc(this.localParticipant.getSsrc());
         packet.setSequenceNumber(this.sequence.incrementAndGet());
-        return this.internalSendData(packet);
+        this.internalSendData(packet);
+        return true;
     }
 
     @Override
@@ -250,16 +259,22 @@ public abstract class AbstractRtpSession implements RtpSession {
             return false;
         }
 
-        if (ControlPacket.Type.APP_DATA.equals(packet.getType())) {
-            return this.internalSendControl(packet);
+        if (ControlPacket.Type.APP_DATA.equals(packet.getType()) || !this.automatedRtcpHandling) {
+            this.internalSendControl(packet);
+            return true;
         }
 
-        return !this.automatedRtcpHandling && this.internalSendControl(packet);
+        return false;
     }
 
     @Override
     public boolean sendControlPacket(CompoundControlPacket packet) {
-        return this.running && !this.automatedRtcpHandling && this.internalSendControl(packet);
+        if (this.running && !this.automatedRtcpHandling) {
+            this.internalSendControl(packet);
+            return true;
+        }
+
+        return false;
     }
 
     @Override
@@ -268,64 +283,24 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     @Override
-    public boolean addParticipant(RtpParticipant remoteParticipant) {
-        if (remoteParticipant.getSsrc() == this.localParticipant.getSsrc()) {
-            return false;
-        }
-
-        this.lock.writeLock().lock();
-        try {
-            DefaultRtpParticipantContext context = this.participantTable.get(remoteParticipant.getSsrc());
-            if (context == null) {
-                context = new DefaultRtpParticipantContext(remoteParticipant);
-                this.participantTable.put(remoteParticipant.getSsrc(), context);
-                return true;
-            }
-            return false;
-        } finally {
-            this.lock.writeLock().unlock();
-        }
-
+    public boolean addReceiver(RtpParticipant remoteParticipant) {
+        return remoteParticipant.getSsrc() != this.localParticipant.getSsrc() &&
+               this.participantDatabase.addReceiver(remoteParticipant);
     }
 
     @Override
-    public RtpParticipantContext removeParticipant(long ssrc) {
-        this.lock.writeLock().lock();
-        try {
-            DefaultRtpParticipantContext context = this.participantTable.remove(ssrc);
-            if (context == null) {
-                return null;
-            }
-
-            return context;
-        } finally {
-            this.lock.writeLock().unlock();
-        }
+    public boolean removeReceiver(RtpParticipant remoteParticipant) {
+        return this.participantDatabase.removeReceiver(remoteParticipant);
     }
 
     @Override
-    public RtpParticipantContext getRemoteParticipant(long ssrc) {
-        this.lock.readLock().lock();
-        try {
-            DefaultRtpParticipantContext context = this.participantTable.get(ssrc);
-            if (context == null) {
-                return null;
-            }
-
-            return context;
-        } finally {
-            this.lock.readLock().unlock();
-        }
+    public RtpParticipant getRemoteParticipant(long ssrc) {
+        return this.participantDatabase.getParticipant(ssrc);
     }
 
     @Override
-    public Collection<RtpParticipantContext> getRemoteParticipants() {
-        this.lock.readLock().lock();
-        try {
-            return Collections.<RtpParticipantContext>unmodifiableCollection(this.participantTable.values());
-        } finally {
-            this.lock.readLock().unlock();
-        }
+    public Map<Long, RtpParticipant> getRemoteParticipants() {
+        return this.participantDatabase.getMembers();
     }
 
     @Override
@@ -373,7 +348,7 @@ public abstract class AbstractRtpSession implements RtpSession {
 
         if (packet.getSsrc() == this.localParticipant.getSsrc()) {
             // Sending data to ourselves? Consider this a loop and bail out!
-            if (origin.equals(this.localParticipant.getDataAddress())) {
+            if (origin.equals(this.localParticipant.getDataDestination())) {
                 this.terminate(new Throwable("Loop detected: session is directly receiving its own packets"));
                 return;
             } else if (this.collisions.incrementAndGet() > this.maxCollisionsBeforeConsideringLoop) {
@@ -404,9 +379,10 @@ public abstract class AbstractRtpSession implements RtpSession {
         }
 
         // Associate the packet with a participant or create one.
-        DefaultRtpParticipantContext context = this.getOrCreateContextFromDataPacket(origin, packet);
+        RtpParticipant context = this.participantDatabase.getOrCreateParticipantFromDataPacket(origin, packet);
         if (context == null) {
-            // Subclasses may chose not to create anything, in which case this packet must be discarded.
+            // Depending on database implementation, it may chose not to create anything, in which case this packet
+            // must be discarded.
             return;
         }
 
@@ -417,18 +393,12 @@ public abstract class AbstractRtpSession implements RtpSession {
             return;
         }
 
-        // Update last SN and location for participant.
-        // We trust the SSRC rather than the ip/port to identify participants (mostly because of NAT).
+        // Update last SN for participant.
         context.setLastSequenceNumber(packet.getSequenceNumber());
-        if (!origin.equals(context.getParticipant().getDataAddress())) {
-            // I know. RFC mandates against this. Experience, however, tells me otherwise.
-            context.getParticipant().updateDataAddress(origin);
-            LOG.debug("Updated RTP address for {} to {} (session id: {}).", context.getParticipant(), origin, this.id);
-        }
 
         // Finally, dispatch the event to the data listeners.
         for (RtpSessionDataListener listener : this.dataListeners) {
-            listener.dataPacketReceived(this, context.getParticipant(), packet);
+            listener.dataPacketReceived(this, context.getInfo(), packet);
         }
     }
 
@@ -475,7 +445,7 @@ public abstract class AbstractRtpSession implements RtpSession {
             return;
         }
 
-        DefaultRtpParticipantContext context = this.getExistingContext(abstractReportPacket.getSenderSsrc());
+        RtpParticipant context = this.participantDatabase.getParticipant(abstractReportPacket.getSenderSsrc());
         if (context == null) {
             // Ignore; RTCP-SDES or RTP packet must first be received.
             return;
@@ -498,34 +468,30 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     protected void handleSdesPacket(SocketAddress origin, SourceDescriptionPacket packet) {
         for (SdesChunk chunk : packet.getChunks()) {
-            DefaultRtpParticipantContext context = this.getOrCreateContextFromSdesChunk(origin, chunk);
-            if (context == null) {
-                continue;
+            RtpParticipant participant = this.participantDatabase.getOrCreateParticipantFromSdesChunk(origin, chunk);
+            if (participant == null) {
+                // Depending on database implementation, it may chose not to create anything, in which case this packet
+                // must be discarded.
+                return;
             }
-            if (!context.hasReceivedSdes()) {
+            if (!participant.hasReceivedSdes()) {
                 // If this participant wasn't created from an SDES packet, then update its participant's description.
-                if (context.getParticipant().updateFromSdesChunk(chunk)) {
+                if (participant.getInfo().updateFromSdesChunk(chunk)) {
                     for (RtpSessionEventListener listener : this.eventListeners) {
-                        listener.participantDataUpdated(this, context.getParticipant());
+                        listener.participantDataUpdated(this, participant);
                     }
                 }
-            }
-            // I know. RFC mandates against this. Experience, however, tells me otherwise.
-            if (!origin.equals(context.getParticipant().getControlAddress())) {
-                context.getParticipant().updateControlAddress(origin);
-                LOG.debug("Updated RTCP address for {} to {} (session id: {}).",
-                          context.getParticipant(), origin, this.id);
             }
         }
     }
 
     protected void handleByePacket(SocketAddress origin, ByePacket packet) {
         for (Long ssrc : packet.getSsrcList()) {
-            DefaultRtpParticipantContext context = this.getExistingContext(ssrc);
-            if (context != null) {
-                context.byeReceived();
+            RtpParticipant participant = this.participantDatabase.getParticipant(ssrc);
+            if (participant != null) {
+                participant.byeReceived();
                 for (RtpSessionEventListener listener : eventListeners) {
-                    listener.participantLeft(this, context.getParticipant());
+                    listener.participantLeft(this, participant);
                 }
             }
         }
@@ -535,109 +501,69 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     // protected helpers ----------------------------------------------------------------------------------------------
 
-    protected boolean internalSendData(DataPacket packet) {
-        this.lock.readLock().lock();
-        try {
-            for (RtpParticipantContext context : this.participantTable.values()) {
-                if (context.receivedBye()) {
-                    continue;
+    protected abstract ParticipantDatabase createDatabase();
+
+    protected void internalSendData(final DataPacket packet) {
+        this.participantDatabase.doWithReceivers(new ParticipantOperation() {
+            @Override
+            public void doWithParticipant(RtpParticipant participant) throws Exception {
+                if (participant.receivedBye()) {
+                    return;
                 }
-                this.writeToData(packet, context.getParticipant().getDataAddress());
-            }
-            return true;
-        } catch (Exception e) {
-            LOG.error("Failed to send RTP packet to participants in session with id {}.", this.id);
-            return false;
-        } finally {
-            this.lock.readLock().unlock();
-        }
-    }
-
-    protected boolean internalSendControl(ControlPacket packet) {
-        this.lock.readLock().lock();
-        try {
-            for (RtpParticipantContext context : this.participantTable.values()) {
-                if (context.receivedBye()) {
-                    continue;
-                }
-                this.writeToControl(packet, context.getParticipant().getControlAddress());
-            }
-            return true;
-        } catch (Exception e) {
-            LOG.error("Failed to send RTCP packet to participants in session with id {}.", this.id);
-            return false;
-        } finally {
-            this.lock.readLock().unlock();
-        }
-    }
-
-    protected boolean internalSendControl(CompoundControlPacket packet) {
-        this.lock.readLock().lock();
-        try {
-            for (RtpParticipantContext context : this.participantTable.values()) {
-                if (context.receivedBye()) {
-                    continue;
-                }
-                this.writeToControl(packet, context.getParticipant().getControlAddress());
-            }
-            return true;
-        } catch (Exception e) {
-            LOG.error("Failed to send RTCP compound packet to participants in session with id {}.", this.id);
-            return false;
-        } finally {
-            this.lock.readLock().unlock();
-        }
-    }
-
-    protected DefaultRtpParticipantContext getOrCreateContextFromDataPacket(SocketAddress origin, DataPacket packet) {
-        // Get or create.
-        this.lock.writeLock().lock();
-        try {
-            DefaultRtpParticipantContext context = this.participantTable.get(packet.getSsrc());
-            if (context == null) {
-                // New participant
-                RtpParticipant participant = RtpParticipant
-                        .createFromUnexpectedDataPacket((InetSocketAddress) origin, packet);
-                context = new DefaultRtpParticipantContext(participant);
-                this.participantTable.put(participant.getSsrc(), context);
-
-                LOG.debug("New participant joined session with id {} (from data packet): {}.", this.id, participant);
-                for (RtpSessionEventListener listener : this.eventListeners) {
-                    listener.participantJoinedFromData(this, participant, packet);
+                try {
+                    writeToData(packet, participant.getDataDestination());
+                } catch (Exception e) {
+                    LOG.error("Failed to send RTP packet to participants in session with id {}.", id);
                 }
             }
 
-            return context;
-        } finally {
-            this.lock.writeLock().unlock();
-        }
+            @Override
+            public String toString() {
+                return "internalSendData() for session with id " + id;
+            }
+        });
     }
 
-    protected DefaultRtpParticipantContext getOrCreateContextFromSdesChunk(SocketAddress origin, SdesChunk chunk) {
-        this.lock.writeLock().lock();
-        try {
-            DefaultRtpParticipantContext context = this.participantTable.get(chunk.getSsrc());
-            if (context == null) {
-                RtpParticipant participant = RtpParticipant.createFromSdesChunk((InetSocketAddress) origin, chunk);
-                context = new DefaultRtpParticipantContext(participant);
-                // Mark SDES packet as received, in order not to update SDES info in the future.
-                context.receivedSdes();
-                this.participantTable.put(participant.getSsrc(), context);
-
-                LOG.debug("New participant joined session with id {} (from SDES chunk): {}.", this.id, participant);
-                for (RtpSessionEventListener listener : this.eventListeners) {
-                    listener.participantJoinedFromControl(this, participant, chunk);
+    protected void internalSendControl(final ControlPacket packet) {
+        this.participantDatabase.doWithReceivers(new ParticipantOperation() {
+            @Override
+            public void doWithParticipant(RtpParticipant participant) throws Exception {
+                if (participant.receivedBye()) {
+                    return;
+                }
+                try {
+                    writeToControl(packet, participant.getControlDestination());
+                } catch (Exception e) {
+                    LOG.error("Failed to send RTCP packet to participants in session with id {}.", id);
                 }
             }
 
-            return context;
-        } finally {
-            this.lock.writeLock().unlock();
-        }
+            @Override
+            public String toString() {
+                return "internalSendControl() for session with id " + id;
+            }
+        });
     }
 
-    protected DefaultRtpParticipantContext getExistingContext(long ssrc) {
-        return this.participantTable.get(ssrc);
+    protected void internalSendControl(final CompoundControlPacket packet) {
+        this.participantDatabase.doWithReceivers(new ParticipantOperation() {
+            @Override
+            public void doWithParticipant(RtpParticipant participant) throws Exception {
+                if (participant.receivedBye()) {
+                    return;
+                }
+                try {
+                    writeToControl(packet, participant.getControlDestination());
+                } catch (Exception e) {
+                    LOG.error("Failed to send RTCP compound packet to participants in session with id {}.", id);
+                }
+            }
+
+            @Override
+            public String toString() {
+                return "internalSendControl(CompoundControlPacket) for session with id " + id;
+            }
+        });
     }
 
     protected void writeToData(DataPacket packet, SocketAddress destination) {
@@ -676,21 +602,30 @@ public abstract class AbstractRtpSession implements RtpSession {
         }
     }
 
-    protected List<CompoundControlPacket> buildLeavePackets(long currentSsrc, String motive) {
-        SourceDescriptionPacket sdesPacket = this.buildSdesPacket(currentSsrc);
-        ByePacket byePacket = new ByePacket();
+    protected List<CompoundControlPacket> buildLeavePackets(final long currentSsrc, String motive) {
+        final SourceDescriptionPacket sdesPacket = this.buildSdesPacket(currentSsrc);
+        final ByePacket byePacket = new ByePacket();
         byePacket.addSsrc(currentSsrc);
         byePacket.setReasonForLeaving(motive);
 
         this.lock.readLock().lock();
         try {
             // Strong estimate.
-            int participantCount = this.participantTable.size();
-            List<CompoundControlPacket> compoundPackets = new ArrayList<CompoundControlPacket>(participantCount);
-            for (DefaultRtpParticipantContext context : this.participantTable.values()) {
-                AbstractReportPacket reportPacket = this.buildReportPacket(currentSsrc, context);
-                compoundPackets.add(new CompoundControlPacket(reportPacket, sdesPacket, byePacket));
-            }
+            int participantCount = this.participantDatabase.getReceiverCount();
+            final List<CompoundControlPacket> compoundPackets = new ArrayList<CompoundControlPacket>(participantCount);
+            this.participantDatabase.doWithReceivers(new ParticipantOperation() {
+
+                @Override
+                public void doWithParticipant(RtpParticipant participant) throws Exception {
+                    AbstractReportPacket reportPacket = buildReportPacket(currentSsrc, participant);
+                    compoundPackets.add(new CompoundControlPacket(reportPacket, sdesPacket, byePacket));
+                }
+
+                @Override
+                public String toString() {
+                    return "buildLeavePackets() for session with id " + id;
+                }
+            });
 
             return compoundPackets;
         } finally {
@@ -698,9 +633,9 @@ public abstract class AbstractRtpSession implements RtpSession {
         }
     }
 
-    private AbstractReportPacket buildReportPacket(long currentSsrc, DefaultRtpParticipantContext context) {
+    protected AbstractReportPacket buildReportPacket(long currentSsrc, RtpParticipant context) {
         AbstractReportPacket packet;
-        if (context.getSentPackets() == 0) {
+        if (this.getSentPackets() == 0) {
             // If no packets were sent to this source, then send a receiver report.
             packet = new ReceiverReportPacket();
         } else {
@@ -708,9 +643,8 @@ public abstract class AbstractRtpSession implements RtpSession {
             SenderReportPacket senderPacket = new SenderReportPacket();
             senderPacket.setNtpTimestamp(0); // FIXME
             senderPacket.setRtpTimestamp(System.currentTimeMillis()); // FIXME
-            senderPacket.setSenderPacketCount(context.getSentPackets());
-            senderPacket.setSenderOctetCount(context.getSentBytes());
-            context.resetSendStats();
+            senderPacket.setSenderPacketCount(this.getSentPackets());
+            senderPacket.setSenderOctetCount(this.getSentBytes());
             packet = senderPacket;
         }
         packet.setSenderSsrc(currentSsrc);
@@ -718,7 +652,7 @@ public abstract class AbstractRtpSession implements RtpSession {
         // If this source sent data, then calculate the link quality to build a reception report block.
         if (context.getReceivedPackets() > 0) {
             ReceptionReport block = new ReceptionReport();
-            block.setSsrc(context.getParticipant().getSsrc());
+            block.setSsrc(context.getInfo().getSsrc());
             block.setDelaySinceLastSenderReport(0); // FIXME
             block.setFractionLost((short) 0); // FIXME
             block.setExtendedHighestSequenceNumberReceived(0); // FIXME
@@ -734,36 +668,37 @@ public abstract class AbstractRtpSession implements RtpSession {
         SourceDescriptionPacket sdesPacket = new SourceDescriptionPacket();
         SdesChunk chunk = new SdesChunk(currentSsrc);
 
-        if (this.localParticipant.getCname() == null) {
-            this.localParticipant.setCname(new StringBuilder()
+        RtpParticipantInfo info = this.localParticipant.getInfo();
+        if (info.getCname() == null) {
+            info.setCname(new StringBuilder()
                     .append("efflux/").append(this.id).append('@')
                     .append(this.dataChannel.getLocalAddress()).toString());
         }
-        chunk.addItem(SdesChunkItems.createCnameItem(this.localParticipant.getCname()));
+        chunk.addItem(SdesChunkItems.createCnameItem(info.getCname()));
 
-        if (this.localParticipant.getName() != null) {
-            chunk.addItem(SdesChunkItems.createNameItem(this.localParticipant.getName()));
+        if (info.getName() != null) {
+            chunk.addItem(SdesChunkItems.createNameItem(info.getName()));
         }
 
-        if (this.localParticipant.getEmail() != null) {
-            chunk.addItem(SdesChunkItems.createEmailItem(this.localParticipant.getEmail()));
+        if (info.getEmail() != null) {
+            chunk.addItem(SdesChunkItems.createEmailItem(info.getEmail()));
         }
 
-        if (this.localParticipant.getPhone() != null) {
-            chunk.addItem(SdesChunkItems.createPhoneItem(this.localParticipant.getPhone()));
+        if (info.getPhone() != null) {
+            chunk.addItem(SdesChunkItems.createPhoneItem(info.getPhone()));
         }
 
-        if (this.localParticipant.getLocation() != null) {
-            chunk.addItem(SdesChunkItems.createLocationItem(this.localParticipant.getLocation()));
+        if (info.getLocation() != null) {
+            chunk.addItem(SdesChunkItems.createLocationItem(info.getLocation()));
         }
 
-        if (this.localParticipant.getTool() == null) {
-            this.localParticipant.setTool(VERSION);
+        if (info.getTool() == null) {
+            info.setTool(VERSION);
         }
-        chunk.addItem(SdesChunkItems.createToolItem(this.localParticipant.getTool()));
+        chunk.addItem(SdesChunkItems.createToolItem(info.getTool()));
 
-        if (this.localParticipant.getNote() != null) {
-            chunk.addItem(SdesChunkItems.createLocationItem(this.localParticipant.getNote()));
+        if (info.getNote() != null) {
+            chunk.addItem(SdesChunkItems.createLocationItem(info.getNote()));
         }
         sdesPacket.addItem(chunk);
 
@@ -793,6 +728,23 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.eventListeners.clear();
 
         this.running = false;
+    }
+
+    protected void resetSendStats() {
+        this.sentByteCounter.set(0);
+        this.sentPacketCounter.set(0);
+    }
+
+    protected long incrementSentBytes(int delta) {
+        if (delta < 0) {
+            return this.sentByteCounter.get();
+        }
+
+        return this.sentByteCounter.addAndGet(delta);
+    }
+
+    protected long incrementSentPackets() {
+        return this.sentPacketCounter.incrementAndGet();
     }
 
     // getters & setters ----------------------------------------------------------------------------------------------
@@ -876,5 +828,24 @@ public abstract class AbstractRtpSession implements RtpSession {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.automatedRtcpHandling = automatedRtcpHandling;
+    }
+
+    public boolean isUpdateDestinationFromOrigin() {
+        return updateDestinationFromOrigin;
+    }
+
+    public void setUpdateDestinationFromOrigin(boolean updateDestinationFromOrigin) {
+        if (this.running) {
+            throw new IllegalArgumentException("Cannot modify property after initialisation");
+        }
+        this.updateDestinationFromOrigin = updateDestinationFromOrigin;
+    }
+
+    public long getSentBytes() {
+        return this.sentByteCounter.get();
+    }
+
+    public long getSentPackets() {
+        return this.sentPacketCounter.get();
     }
 }

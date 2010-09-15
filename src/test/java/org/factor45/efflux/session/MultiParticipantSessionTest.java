@@ -17,7 +17,8 @@
 package org.factor45.efflux.session;
 
 import org.factor45.efflux.packet.DataPacket;
-import org.factor45.efflux.packet.SdesChunk;
+import org.factor45.efflux.participant.RtpParticipant;
+import org.factor45.efflux.participant.RtpParticipantInfo;
 import org.junit.After;
 import org.junit.Test;
 
@@ -45,18 +46,19 @@ public class MultiParticipantSessionTest {
 
     @Test
     public void testNewParticipantFromDataPacket() throws Exception {
-        RtpParticipant participant = new RtpParticipant("localhost", 8000, 8001, 6969);
+        RtpParticipant participant = RtpParticipant.createReceiver("localhost", 8000, 8001);
+        participant.getInfo().setSsrc(6969);
         this.session = new MultiParticipantSession("id", 8, participant);
         assertTrue(this.session.init());
 
         this.session.addEventListener(new RtpSessionEventListener() {
             @Override
-            public void participantJoinedFromData(RtpSession session, RtpParticipant participant, DataPacket packet) {
+            public void participantJoinedFromData(RtpSession session, RtpParticipant participant) {
                 assertEquals(69, participant.getSsrc());
             }
 
             @Override
-            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant, SdesChunk chunk) {
+            public void participantJoinedFromControl(RtpSession session, RtpParticipant participant) {
             }
 
             @Override
@@ -65,6 +67,10 @@ public class MultiParticipantSessionTest {
 
             @Override
             public void participantLeft(RtpSession session, RtpParticipant participant) {
+            }
+
+            @Override
+            public void participantDeleted(RtpSession session, RtpParticipant participant) {
             }
 
             @Override
@@ -87,7 +93,8 @@ public class MultiParticipantSessionTest {
 
     @Test
     public void testOutOfOrderDiscard() throws Exception {
-        RtpParticipant participant = new RtpParticipant("localhost", 8000, 8001, 6969);
+        RtpParticipant participant = RtpParticipant.createReceiver("localhost", 8000, 8001);
+        participant.getInfo().setSsrc(6969);
         this.session = new MultiParticipantSession("id", 8, participant);
         assertTrue(this.session.init());
 
@@ -95,7 +102,7 @@ public class MultiParticipantSessionTest {
 
         this.session.addDataListener(new RtpSessionDataListener() {
             @Override
-            public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
+            public void dataPacketReceived(RtpSession session, RtpParticipantInfo participant, DataPacket packet) {
                 counter.incrementAndGet();
             }
         });

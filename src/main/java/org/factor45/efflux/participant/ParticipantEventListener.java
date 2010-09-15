@@ -14,26 +14,16 @@
  * limitations under the License.
  */
 
-package org.factor45.efflux.session;
+package org.factor45.efflux.participant;
 
 /**
  * @author <a:mailto="bruno.carvalho@wit-software.com" />Bruno de Carvalho</a>
  */
-public interface RtpParticipantContext {
+public interface ParticipantEventListener {
 
-    RtpParticipant getParticipant();
+    void participantCreatedFromSdesChunk(RtpParticipant participant);
 
-    long getByeReceptionInstant();
+    void participantCreatedFromDataPacket(RtpParticipant participant);
 
-    int getLastSequenceNumber();
-
-    boolean receivedBye();
-
-    long getSentPackets();
-
-    long getSentBytes();
-
-    long getReceivedPackets();
-
-    long getReceivedBytes();
+    void participantDeleted(RtpParticipant participant);
 }

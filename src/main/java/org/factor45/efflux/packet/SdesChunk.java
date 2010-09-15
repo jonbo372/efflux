@@ -132,6 +132,20 @@ public class SdesChunk {
         return this.items.add(item);
     }
 
+    public String getItemValue(SdesChunkItem.Type type) {
+        if (this.items == null) {
+            return null;
+        }
+
+        for (SdesChunkItem item : this.items) {
+            if (item.getType() == type) {
+                return item.getValue();
+            }
+        }
+
+        return null;
+    }
+
     // getters & setters ----------------------------------------------------------------------------------------------
 
     public long getSsrc() {
@@ -146,6 +160,10 @@ public class SdesChunk {
     }
 
     public List<SdesChunkItem> getItems() {
+        if (this.items == null) {
+            return null;
+        }
+
         return Collections.unmodifiableList(this.items);
     }
 

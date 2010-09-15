@@ -17,6 +17,7 @@
 package org.factor45.efflux.session;
 
 import org.factor45.efflux.packet.DataPacket;
+import org.factor45.efflux.participant.RtpParticipantInfo;
 import org.junit.After;
 import org.junit.Test;
 
@@ -50,12 +51,12 @@ public class MultiParticipantSessionFunctionalTest {
     @Test
     public void testDeliveryToAllParticipants() throws Exception {
         this.sessions = new MultiParticipantSession[N];
-        RtpParticipant[] p = new RtpParticipant[N];
+        RtpParticipantInfo[] p = new RtpParticipantInfo[N];
         final AtomicInteger[] counters = new AtomicInteger[N];
         final CountDownLatch latch = new CountDownLatch(N);
 
         for (byte i = 0; i < N; i++) {
-            p[i] = new RtpParticipant("127.0.0.1", 10000 + (i * 2), 20001 + (i * 2), i);
+            p[i] = new RtpParticipantInfo("127.0.0.1", 10000 + (i * 2), 20001 + (i * 2), i);
             this.sessions[i] = new MultiParticipantSession("session" + i, 8, p[i]);
             assertTrue(this.sessions[i].init());
             final AtomicInteger counter = new AtomicInteger();
@@ -63,7 +64,7 @@ public class MultiParticipantSessionFunctionalTest {
             this.sessions[i].addDataListener(new RtpSessionDataListener() {
 
                 @Override
-                public void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet) {
+                public void dataPacketReceived(RtpSession session, RtpParticipantInfo participant, DataPacket packet) {
                     System.err.println(session.getId() + " received data from " + participant + ": " + packet);
                     if (counter.incrementAndGet() == (N - 1)) {
                         // Release the latch once all N-1 messages (because it wont receive the message it sends) are

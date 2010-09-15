@@ -17,11 +17,12 @@
 package org.factor45.efflux.session;
 
 import org.factor45.efflux.packet.DataPacket;
+import org.factor45.efflux.participant.RtpParticipantInfo;
 
 /**
  * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
 public interface RtpSessionDataListener {
 
-    void dataPacketReceived(RtpSession session, RtpParticipant participant, DataPacket packet);
+    void dataPacketReceived(RtpSession session, RtpParticipantInfo participant, DataPacket packet);
 }

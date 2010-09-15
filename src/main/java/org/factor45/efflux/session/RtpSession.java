@@ -21,8 +21,11 @@ import org.factor45.efflux.network.DataPacketReceiver;
 import org.factor45.efflux.packet.CompoundControlPacket;
 import org.factor45.efflux.packet.ControlPacket;
 import org.factor45.efflux.packet.DataPacket;
+import org.factor45.efflux.participant.RtpParticipant;
+import org.factor45.efflux.participant.RtpParticipantInfo;
 
 import java.util.Collection;
+import java.util.Map;
 
 /**
  * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
@@ -47,13 +50,13 @@ public interface RtpSession extends DataPacketReceiver, ControlPacketReceiver {
 
     RtpParticipant getLocalParticipant();
 
-    boolean addParticipant(RtpParticipant remoteParticipant);
+    boolean addReceiver(RtpParticipant remoteParticipant);
 
-    RtpParticipantContext removeParticipant(long ssrc);
+    boolean removeReceiver(RtpParticipant remoteParticipant);
 
-    RtpParticipantContext getRemoteParticipant(long ssrsc);
+    RtpParticipant getRemoteParticipant(long ssrsc);
 
-    Collection<RtpParticipantContext> getRemoteParticipants();
+    Map<Long, RtpParticipant> getRemoteParticipants();
 
     void addDataListener(RtpSessionDataListener listener);
 

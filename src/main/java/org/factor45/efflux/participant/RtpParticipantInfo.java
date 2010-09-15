@@ -14,22 +14,18 @@
  * limitations under the License.
  */
 
-package org.factor45.efflux.session;
+package org.factor45.efflux.participant;
 
-import org.factor45.efflux.packet.DataPacket;
 import org.factor45.efflux.packet.SdesChunk;
 import org.factor45.efflux.packet.SdesChunkItem;
 import org.factor45.efflux.packet.SdesChunkPrivItem;
 
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.util.Collection;
 import java.util.Random;
 
 /**
  * @author <a href="http://bruno.factor45.org/">Bruno de Carvalho</a>
  */
-public class RtpParticipant {
+public class RtpParticipantInfo {
 
     // constants ------------------------------------------------------------------------------------------------------
 
@@ -37,8 +33,6 @@ public class RtpParticipant {
 
     // internal vars --------------------------------------------------------------------------------------------------
 
-    private SocketAddress dataAddress;
-    private SocketAddress controlAddress;
     private long ssrc;
     private String name;
     private String cname;
@@ -52,49 +46,16 @@ public class RtpParticipant {
 
     // constructors ---------------------------------------------------------------------------------------------------
 
-    public RtpParticipant(String host, int dataPort, int controlPort, long ssrc) {
+    public RtpParticipantInfo(long ssrc) {
         if ((ssrc < 0) || (ssrc > 0xffffffffL)) {
             throw new IllegalArgumentException("Valid range for SSRC is [0;0xffffffff]");
         }
-        if ((dataPort < 0) || (dataPort > 65536)) {
-            throw new IllegalArgumentException("Invalid port number; use range [0;65536]");
-        }
-        if ((controlPort < 0) || (controlPort > 65536)) {
-            throw new IllegalArgumentException("Invalid port number; use range [0;65536]");
-        }
-        this.dataAddress = new InetSocketAddress(host, dataPort);
-        this.controlAddress = new InetSocketAddress(host, controlPort);
+
         this.ssrc = ssrc;
     }
 
-    public RtpParticipant(String host, int dataPort, int controlPort) {
-        this(host, dataPort, controlPort, generateNewSsrc());
-    }
-
-    private RtpParticipant() {
-    }
-
-    // public static methods ------------------------------------------------------------------------------------------
-
-    public static RtpParticipant createFromUnexpectedDataPacket(InetSocketAddress origin, DataPacket packet) {
-        RtpParticipant participant = new RtpParticipant();
-        // I know RFC states that we "MUST NOT" consider the origin IP as the destination for future packets, but it
-        // doesn't provide an alternative so yeah, I'll pretty much disregard the RFC here.
-        participant.dataAddress = origin;
-        participant.controlAddress = new InetSocketAddress(origin.getAddress(), origin.getPort() + 1);
-        participant.ssrc = packet.getSsrc();
-        return participant;
-    }
-
-    public static RtpParticipant createFromSdesChunk(InetSocketAddress origin, SdesChunk chunk) {
-        RtpParticipant participant = new RtpParticipant();
-        // I know RFC states that we "MUST NOT" consider the origin IP as the destination for future packets, but it
-        // doesn't provide an alternative so yeah, I'll pretty much disregard the RFC here.
-        participant.dataAddress = new InetSocketAddress(origin.getAddress(), origin.getPort() - 1);
-        participant.controlAddress = origin;
-        participant.updateFromSdesChunk(chunk);
-
-        return participant;
+    public RtpParticipantInfo() {
+        this(generateNewSsrc());
     }
 
     /**
@@ -121,6 +82,10 @@ public class RtpParticipant {
             modified = true;
         }
         this.ssrc = chunk.getSsrc();
+        if (chunk.getItems() == null) {
+            return modified;
+        }
+
         for (SdesChunkItem item : chunk.getItems()) {
             switch (item.getType()) {
                 case CNAME:
@@ -181,30 +146,15 @@ public class RtpParticipant {
         return modified;
     }
 
-    public void updateDataAddress(SocketAddress address) {
-        this.dataAddress = address;
+    // private helpers ------------------------------------------------------------------------------------------------
+
+    private boolean willCauseModification(String originalValue, String newValue) {
+        return newValue != null && !newValue.equals(originalValue);
     }
 
-    public void updateControlAddress(SocketAddress address) {
-        this.controlAddress = address;
-    }
+    // getters & setters ----------------------------------------------------------------------------------------------
 
-    public long resolveSsrcConflict(long ssrcToAvoid) {
-        // Will hardly ever loop more than once...
-        while (this.ssrc == ssrcToAvoid) {
-            this.ssrc = generateNewSsrc();
-        }
-
-        return this.ssrc;
-    }
-
-    public long resolveSsrcConflict(Collection<Long> ssrcsToAvoid) {
-        // Probability to execute more than once is higher than the other method that takes just a long as parameter,
-        // but its still incredibly low: for 1000 participants, there's roughly 2*10^-7 chance of collision
-        while (ssrcsToAvoid.contains(this.ssrc)) {
-            this.ssrc = generateNewSsrc();
-        }
-
+    public long getSsrc() {
         return this.ssrc;
     }
 
@@ -214,32 +164,12 @@ public class RtpParticipant {
      *
      * @param ssrc The new SSRC.
      */
-    public void updateSsrc(long ssrc) {
+    public void setSsrc(long ssrc) {
         if ((ssrc < 0) || (ssrc > 0xffffffffL)) {
             throw new IllegalArgumentException("Valid range for SSRC is [0;0xffffffff]");
         }
 
         this.ssrc = ssrc;
-    }
-
-    // private helpers ------------------------------------------------------------------------------------------------
-
-    private boolean willCauseModification(String originalValue, String newValue) {
-        return newValue != null && !newValue.equals(originalValue);
-    }
-
-    // getters & setters ----------------------------------------------------------------------------------------------
-
-    public SocketAddress getDataAddress() {
-        return this.dataAddress;
-    }
-
-    public SocketAddress getControlAddress() {
-        return this.controlAddress;
-    }
-
-    public long getSsrc() {
-        return this.ssrc;
     }
 
     public String getCname() {
@@ -316,10 +246,8 @@ public class RtpParticipant {
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder()
-                .append("RtpParticipant{")
-                .append("ssrc=").append(this.ssrc)
-                .append(", dataAddress=").append(this.dataAddress)
-                .append(", controlAddress=").append(this.controlAddress);
+                .append("RtpParticipantInfo{")
+                .append("ssrc=").append(this.ssrc);
 
         if (this.cname != null) {
             builder.append(", cname='").append(this.cname).append('\'');
