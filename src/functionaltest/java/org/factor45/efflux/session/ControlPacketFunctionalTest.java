@@ -286,4 +286,38 @@ public class ControlPacketFunctionalTest {
         assertEquals("session2@127.0.0.1:7000", participant.getInfo().getCname());
         assertEquals("session2", participant.getInfo().getName());
     }
+
+    @Test
+    public void testAutomatedReportDelivery() {
+        final CountDownLatch latch = new CountDownLatch(4);
+
+        RtpParticipant local1 = RtpParticipant.createReceiver(new RtpParticipantInfo(1), "127.0.0.1", 6000, 6001);
+        RtpParticipant remote1 = RtpParticipant.createReceiver(new RtpParticipantInfo(2), "127.0.0.1", 7000, 7001);
+        this.session1 = new SingleParticipantSession("Session1", 8, local1, remote1);
+        this.session1.setAutomatedRtcpHandling(false);
+        assertTrue(this.session1.init());
+        this.session1.addControlListener(new RtpSessionControlListener() {
+            @Override
+            public void controlPacketReceived(RtpSession session, CompoundControlPacket packet) {
+                System.err.println("Session 1 received rtcp packet:\n" + packet);
+                latch.countDown();
+            }
+
+            @Override
+            public void appDataReceived(RtpSession session, AppDataPacket appDataPacket) {
+                fail("Unexpected APP_DATA packet received");
+            }
+        });
+
+        RtpParticipant local2 = RtpParticipant.createReceiver(new RtpParticipantInfo(2), "127.0.0.1", 7000, 7001);
+        RtpParticipant remote2 = RtpParticipant.createReceiver(new RtpParticipantInfo(1), "127.0.0.1", 6000, 6001);
+        this.session2 = new SingleParticipantSession("Session2", 8, local2, remote2);
+        assertTrue(this.session2.init());
+
+        try {
+            assertTrue(latch.await(20000, TimeUnit.MILLISECONDS));
+        } catch (Exception e) {
+            fail("Exception caught: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+        }
+    }
 }

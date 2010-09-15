@@ -169,7 +169,7 @@ public class SingleParticipantSessionFunctionalTest {
         this.session2 = new SingleParticipantSession("Session2", 8, local2, remote2) {
             @Override
             public boolean sendDataPacket(DataPacket packet) {
-                if (!this.running) {
+                if (!this.running.get()) {
                     return false;
                 }
 

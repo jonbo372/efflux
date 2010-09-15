@@ -22,6 +22,8 @@ import org.factor45.efflux.packet.DataPacket;
 import org.factor45.efflux.participant.ParticipantDatabase;
 import org.factor45.efflux.participant.RtpParticipant;
 import org.factor45.efflux.participant.SingleParticipantDatabase;
+import org.jboss.netty.handler.execution.OrderedMemoryAwareThreadPoolExecutor;
+import org.jboss.netty.util.HashedWheelTimer;
 
 import java.net.SocketAddress;
 import java.util.HashMap;
@@ -66,7 +68,23 @@ public class SingleParticipantSession extends AbstractRtpSession {
 
     public SingleParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
                                     RtpParticipant remoteParticipant) {
-        super(id, payloadType, localParticipant);
+        this(id, payloadType, localParticipant, remoteParticipant, null, null);
+    }
+
+    public SingleParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
+                                    RtpParticipant remoteParticipant, OrderedMemoryAwareThreadPoolExecutor executor) {
+        this(id, payloadType, localParticipant, remoteParticipant, null, executor);
+    }
+
+    public SingleParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
+                                    RtpParticipant remoteParticipant, HashedWheelTimer timer) {
+        this(id, payloadType, localParticipant, remoteParticipant, timer, null);
+    }
+
+    public SingleParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
+                                    RtpParticipant remoteParticipant, HashedWheelTimer timer,
+                                    OrderedMemoryAwareThreadPoolExecutor executor) {
+        super(id, payloadType, localParticipant, timer, executor);
         if (!remoteParticipant.isReceiver()) {
             throw new IllegalArgumentException("Remote participant must be a receiver (data & control addresses set)");
         }
@@ -196,7 +214,7 @@ public class SingleParticipantSession extends AbstractRtpSession {
     }
 
     public void setSendToLastOrigin(boolean sendToLastOrigin) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.sendToLastOrigin = sendToLastOrigin;
@@ -207,7 +225,7 @@ public class SingleParticipantSession extends AbstractRtpSession {
     }
 
     public void setIgnoreFromUnknownSsrc(boolean ignoreFromUnknownSsrc) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.ignoreFromUnknownSsrc = ignoreFromUnknownSsrc;

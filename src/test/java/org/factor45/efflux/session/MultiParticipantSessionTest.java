@@ -36,7 +36,6 @@ public class MultiParticipantSessionTest {
 
     private MultiParticipantSession session;
 
-
     @After
     public void tearDown() {
         if (this.session != null) {

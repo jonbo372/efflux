@@ -20,6 +20,8 @@ import org.factor45.efflux.participant.DefaultParticipantDatabase;
 import org.factor45.efflux.participant.ParticipantDatabase;
 import org.factor45.efflux.participant.ParticipantEventListener;
 import org.factor45.efflux.participant.RtpParticipant;
+import org.jboss.netty.handler.execution.OrderedMemoryAwareThreadPoolExecutor;
+import org.jboss.netty.util.HashedWheelTimer;
 
 /**
  * A regular RTP session, as described in RFC3550.
@@ -33,7 +35,22 @@ public class MultiParticipantSession extends AbstractRtpSession implements Parti
     // constructors ---------------------------------------------------------------------------------------------------
 
     public MultiParticipantSession(String id, int payloadType, RtpParticipant localParticipant) {
-        super(id, payloadType, localParticipant);
+        super(id, payloadType, localParticipant, null, null);
+    }
+
+    public MultiParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
+                                   HashedWheelTimer timer) {
+        super(id, payloadType, localParticipant, timer, null);
+    }
+
+    public MultiParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
+                                   OrderedMemoryAwareThreadPoolExecutor executor) {
+        super(id, payloadType, localParticipant, null, executor);
+    }
+
+    public MultiParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
+                                   HashedWheelTimer timer, OrderedMemoryAwareThreadPoolExecutor executor) {
+        super(id, payloadType, localParticipant, timer, executor);
     }
 
     // AbstractRtpSession ---------------------------------------------------------------------------------------------

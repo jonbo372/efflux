@@ -48,12 +48,18 @@ import org.jboss.netty.channel.socket.DatagramChannel;
 import org.jboss.netty.channel.socket.DatagramChannelFactory;
 import org.jboss.netty.channel.socket.nio.NioDatagramChannelFactory;
 import org.jboss.netty.channel.socket.oio.OioDatagramChannelFactory;
+import org.jboss.netty.handler.execution.ExecutionHandler;
+import org.jboss.netty.handler.execution.OrderedMemoryAwareThreadPoolExecutor;
+import org.jboss.netty.util.HashedWheelTimer;
+import org.jboss.netty.util.Timeout;
+import org.jboss.netty.util.TimerTask;
 
 import java.net.SocketAddress;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -61,7 +67,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * @author <a:mailto="bruno.carvalho@wit-software.com" />Bruno de Carvalho</a>
  */
-public abstract class AbstractRtpSession implements RtpSession {
+public abstract class AbstractRtpSession implements RtpSession, TimerTask {
 
     // constants ------------------------------------------------------------------------------------------------------
 
@@ -73,33 +79,39 @@ public abstract class AbstractRtpSession implements RtpSession {
     // TODO not working with USE_NIO = false
     protected static final boolean USE_NIO = true;
     protected static final boolean DISCARD_OUT_OF_ORDER = true;
+    protected static final int BANDWIDTH_LIMIT = 256;
     protected static final int SEND_BUFFER_SIZE = 1500;
     protected static final int RECEIVE_BUFFER_SIZE = 1500;
     protected static final int MAX_COLLISIONS_BEFORE_CONSIDERING_LOOP = 3;
     protected static final boolean AUTOMATED_RTCP_HANDLING = true;
     protected static final boolean TRY_TO_UPDATE_ON_EVERY_SDES = true;
+    protected static final int PARTICIPANT_DATABASE_CLEANUP = 10;
 
     // configuration --------------------------------------------------------------------------------------------------
 
     protected final String id;
     protected final int payloadType;
+    protected final HashedWheelTimer timer;
+    protected final OrderedMemoryAwareThreadPoolExecutor executor;
     protected String host;
+    protected boolean useNio;
     protected boolean discardOutOfOrder;
+    protected int bandwidthLimit;
     protected int sendBufferSize;
     protected int receiveBufferSize;
     protected int maxCollisionsBeforeConsideringLoop;
     protected boolean automatedRtcpHandling;
     protected boolean tryToUpdateOnEverySdes;
+    protected int participantDatabaseCleanup;
 
     // internal vars --------------------------------------------------------------------------------------------------
 
+    protected final AtomicBoolean running;
     protected final RtpParticipant localParticipant;
     protected final ParticipantDatabase participantDatabase;
     protected final List<RtpSessionDataListener> dataListeners;
     protected final List<RtpSessionControlListener> controlListeners;
     protected final List<RtpSessionEventListener> eventListeners;
-    protected boolean useNio;
-    protected boolean running;
     protected ConnectionlessBootstrap dataBootstrap;
     protected ConnectionlessBootstrap controlBootstrap;
     protected DatagramChannel dataChannel;
@@ -109,10 +121,27 @@ public abstract class AbstractRtpSession implements RtpSession {
     protected final AtomicInteger collisions;
     protected final AtomicLong sentByteCounter;
     protected final AtomicLong sentPacketCounter;
+    protected int periodicRtcpSendInterval;
+    protected final boolean internalTimer;
 
     // constructors ---------------------------------------------------------------------------------------------------
 
     public AbstractRtpSession(String id, int payloadType, RtpParticipant local) {
+        this(id, payloadType, local, null, null);
+    }
+
+    public AbstractRtpSession(String id, int payloadType, RtpParticipant local,
+                              HashedWheelTimer timer) {
+        this(id, payloadType, local, timer, null);
+    }
+
+    public AbstractRtpSession(String id, int payloadType, RtpParticipant local,
+                              OrderedMemoryAwareThreadPoolExecutor executor) {
+        this(id, payloadType, local, null, executor);
+    }
+
+    public AbstractRtpSession(String id, int payloadType, RtpParticipant local, HashedWheelTimer timer,
+                              OrderedMemoryAwareThreadPoolExecutor executor) {
         if ((payloadType < 0) || (payloadType > 127)) {
             throw new IllegalArgumentException("PayloadType must be in range [0;127]");
         }
@@ -125,7 +154,16 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.payloadType = payloadType;
         this.localParticipant = local;
         this.participantDatabase = this.createDatabase();
+        this.executor = executor;
+        if (timer == null) {
+            this.timer = new HashedWheelTimer(1, TimeUnit.SECONDS);
+            this.internalTimer = true;
+        } else {
+            this.timer = timer;
+            this.internalTimer = false;
+        }
 
+        this.running = new AtomicBoolean(false);
         this.dataListeners = new CopyOnWriteArrayList<RtpSessionDataListener>();
         this.controlListeners = new CopyOnWriteArrayList<RtpSessionControlListener>();
         this.eventListeners = new CopyOnWriteArrayList<RtpSessionEventListener>();
@@ -137,11 +175,13 @@ public abstract class AbstractRtpSession implements RtpSession {
 
         this.useNio = USE_NIO;
         this.discardOutOfOrder = DISCARD_OUT_OF_ORDER;
+        this.bandwidthLimit = BANDWIDTH_LIMIT;
         this.sendBufferSize = SEND_BUFFER_SIZE;
         this.receiveBufferSize = RECEIVE_BUFFER_SIZE;
         this.maxCollisionsBeforeConsideringLoop = MAX_COLLISIONS_BEFORE_CONSIDERING_LOOP;
         this.automatedRtcpHandling = AUTOMATED_RTCP_HANDLING;
         this.tryToUpdateOnEverySdes = TRY_TO_UPDATE_ON_EVERY_SDES;
+        this.participantDatabaseCleanup = PARTICIPANT_DATABASE_CLEANUP;
     }
 
     // RtpSession -----------------------------------------------------------------------------------------------------
@@ -158,6 +198,10 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     @Override
     public synchronized boolean init() {
+        if (this.running.get()) {
+            return true;
+        }
+
         DatagramChannelFactory factory;
         if (this.useNio) {
             factory = new OioDatagramChannelFactory(Executors.newCachedThreadPool());
@@ -172,9 +216,14 @@ public abstract class AbstractRtpSession implements RtpSession {
                                      new FixedReceiveBufferSizePredictorFactory(this.receiveBufferSize));
         this.dataBootstrap.setPipelineFactory(new ChannelPipelineFactory() {
             public ChannelPipeline getPipeline() throws Exception {
-                return Channels.pipeline(new DataPacketDecoder(),
-                                         DataPacketEncoder.getInstance(),
-                                         new DataHandler(AbstractRtpSession.this));
+                ChannelPipeline pipeline = Channels.pipeline();
+                pipeline.addLast("decoder", new DataPacketDecoder());
+                pipeline.addLast("encoder", DataPacketEncoder.getInstance());
+                if (executor != null) {
+                    pipeline.addLast("executorHandler", new ExecutionHandler(executor));
+                }
+                pipeline.addLast("handler", new DataHandler(AbstractRtpSession.this));
+                return pipeline;
             }
         });
         this.controlBootstrap = new ConnectionlessBootstrap(factory);
@@ -184,9 +233,14 @@ public abstract class AbstractRtpSession implements RtpSession {
                                         new FixedReceiveBufferSizePredictorFactory(this.receiveBufferSize));
         this.controlBootstrap.setPipelineFactory(new ChannelPipelineFactory() {
             public ChannelPipeline getPipeline() throws Exception {
-                return Channels.pipeline(new ControlPacketDecoder(),
-                                         ControlPacketEncoder.getInstance(),
-                                         new ControlHandler(AbstractRtpSession.this));
+                ChannelPipeline pipeline = Channels.pipeline();
+                pipeline.addLast("decoder", new ControlPacketDecoder());
+                pipeline.addLast("encoder", ControlPacketEncoder.getInstance());
+                if (executor != null) {
+                    pipeline.addLast("executorHandler", new ExecutionHandler(executor));
+                }
+                pipeline.addLast("handler", new ControlHandler(AbstractRtpSession.this));
+                return pipeline;
             }
         });
 
@@ -214,7 +268,30 @@ public abstract class AbstractRtpSession implements RtpSession {
         LOG.debug("Data & Control channels bound for RtpSession with id {}.", this.id);
         // Send first RTCP packet.
         this.joinSession(this.localParticipant.getSsrc());
-        return (this.running = true);
+        this.running.set(true);
+
+        // Add the cleaner.
+        this.timer.newTimeout(new TimerTask() {
+            @Override
+            public void run(Timeout timeout) throws Exception {
+                if (!running.get()) {
+                    return;
+                }
+
+                participantDatabase.cleanup();
+                timer.newTimeout(this, participantDatabaseCleanup, TimeUnit.SECONDS);
+            }
+        }, this.participantDatabaseCleanup, TimeUnit.SECONDS);
+        // Add the RTCP generator.
+        if (this.automatedRtcpHandling) {
+            this.timer.newTimeout(this, this.updatePeriodicRtcpSendInterval(), TimeUnit.SECONDS);
+        }
+
+        if (this.internalTimer) {
+            this.timer.start();
+        }
+
+        return true;
     }
 
     @Override
@@ -224,7 +301,7 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     @Override
     public boolean sendData(byte[] data, long timestamp, boolean marked) {
-        if (!this.running) {
+        if (!this.running.get()) {
             return false;
         }
 
@@ -239,7 +316,7 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     @Override
     public boolean sendDataPacket(DataPacket packet) {
-        if (!this.running) {
+        if (!this.running.get()) {
             return false;
         }
 
@@ -255,7 +332,7 @@ public abstract class AbstractRtpSession implements RtpSession {
         // Only allow sending explicit RTCP packets if all the following conditions are met:
         // 1. session is running
         // 2. automated rtcp handling is disabled (except for APP_DATA packets) 
-        if (!this.running) {
+        if (!this.running.get()) {
             return false;
         }
 
@@ -269,7 +346,7 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     @Override
     public boolean sendControlPacket(CompoundControlPacket packet) {
-        if (this.running && !this.automatedRtcpHandling) {
+        if (this.running.get() && !this.automatedRtcpHandling) {
             this.internalSendControl(packet);
             return true;
         }
@@ -337,7 +414,7 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     @Override
     public void dataPacketReceived(SocketAddress origin, DataPacket packet) {
-        if (!this.running) {
+        if (!this.running.get()) {
             return;
         }
 
@@ -407,7 +484,7 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     @Override
     public void controlPacketReceived(SocketAddress origin, CompoundControlPacket packet) {
-        if (!this.running) {
+        if (!this.running.get()) {
             return;
         }
 
@@ -440,6 +517,32 @@ public abstract class AbstractRtpSession implements RtpSession {
             }
         }
     }
+
+    // Runnable -------------------------------------------------------------------------------------------------------
+
+    @Override
+    public void run(Timeout timeout) throws Exception {
+        if (!this.running.get()) {
+            return;
+        }
+
+        final long currentSsrc = this.localParticipant.getSsrc();
+        final SourceDescriptionPacket sdesPacket = buildSdesPacket(currentSsrc);
+        this.participantDatabase.doWithReceivers(new ParticipantOperation() {
+            @Override
+            public void doWithParticipant(RtpParticipant participant) throws Exception {
+                AbstractReportPacket report = buildReportPacket(currentSsrc, participant);
+                internalSendControl(new CompoundControlPacket(report, sdesPacket));
+            }
+        });
+
+        if (!this.running.get()) {
+            return;
+        }
+        this.timer.newTimeout(this, this.updatePeriodicRtcpSendInterval(), TimeUnit.SECONDS);
+    }
+
+    // protected helpers ----------------------------------------------------------------------------------------------
 
     protected void handleReportPacket(SocketAddress origin, AbstractReportPacket abstractReportPacket) {
         if (abstractReportPacket.getReceptionReportCount() == 0) {
@@ -501,8 +604,6 @@ public abstract class AbstractRtpSession implements RtpSession {
                   packet.getSsrcList(), this.id, packet. getReasonForLeaving());
     }
 
-    // protected helpers ----------------------------------------------------------------------------------------------
-
     protected abstract ParticipantDatabase createDatabase();
 
     protected void internalSendData(final DataPacket packet) {
@@ -524,6 +625,30 @@ public abstract class AbstractRtpSession implements RtpSession {
                 return "internalSendData() for session with id " + id;
             }
         });
+    }
+
+    protected void internalSendControl(ControlPacket packet, RtpParticipant participant) {
+        if (!participant.isReceiver() || participant.receivedBye()) {
+            return;
+        }
+
+        try {
+            this.writeToControl(packet, participant.getControlDestination());
+        } catch (Exception e) {
+            LOG.error("Failed to send RTCP packet to {} in session with id {}.", participant, this.id);
+        }
+    }
+
+    protected void internalSendControl(CompoundControlPacket packet, RtpParticipant participant) {
+        if (!participant.isReceiver() || participant.receivedBye()) {
+            return;
+        }
+
+        try {
+            this.writeToControl(packet, participant.getControlDestination());
+        } catch (Exception e) {
+            LOG.error("Failed to send RTCP compound packet to {} in session with id {}.", participant, this.id);
+        }
     }
 
     protected void internalSendControl(final ControlPacket packet) {
@@ -680,8 +805,13 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     protected synchronized void terminate(Throwable cause) {
-        if (!this.running) {
+        // Always set to false, even it if was already set at false.
+        if (!this.running.getAndSet(false)) {
             return;
+        }
+
+        if (this.internalTimer) {
+            this.timer.stop();
         }
 
         this.dataListeners.clear();
@@ -700,8 +830,6 @@ public abstract class AbstractRtpSession implements RtpSession {
             listener.sessionTerminated(this, cause);
         }
         this.eventListeners.clear();
-
-        this.running = false;
     }
 
     protected void resetSendStats() {
@@ -721,14 +849,23 @@ public abstract class AbstractRtpSession implements RtpSession {
         return this.sentPacketCounter.incrementAndGet();
     }
 
+    protected long updatePeriodicRtcpSendInterval() {
+        // TODO make this adaptative
+        return (this.periodicRtcpSendInterval = 5);
+    }
+
     // getters & setters ----------------------------------------------------------------------------------------------
+
+    public boolean isRunning() {
+        return this.running.get();
+    }
 
     public String getHost() {
         return host;
     }
 
     public void setHost(String host) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.host = host;
@@ -739,14 +876,10 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     public void setUseNio(boolean useNio) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.useNio = useNio;
-    }
-
-    public boolean isRunning() {
-        return running;
     }
 
     public boolean isDiscardOutOfOrder() {
@@ -754,10 +887,21 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     public void setDiscardOutOfOrder(boolean discardOutOfOrder) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.discardOutOfOrder = discardOutOfOrder;
+    }
+
+    public int getBandwidthLimit() {
+        return bandwidthLimit;
+    }
+
+    public void setBandwidthLimit(int bandwidthLimit) {
+        if (this.running.get()) {
+            throw new IllegalArgumentException("Cannot modify property after initialisation");
+        }
+        this.bandwidthLimit = bandwidthLimit;
     }
 
     public int getSendBufferSize() {
@@ -765,7 +909,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     public void setSendBufferSize(int sendBufferSize) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.sendBufferSize = sendBufferSize;
@@ -776,7 +920,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     public void setReceiveBufferSize(int receiveBufferSize) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.receiveBufferSize = receiveBufferSize;
@@ -787,7 +931,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     public void setMaxCollisionsBeforeConsideringLoop(int maxCollisionsBeforeConsideringLoop) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.maxCollisionsBeforeConsideringLoop = maxCollisionsBeforeConsideringLoop;
@@ -798,7 +942,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     public void setAutomatedRtcpHandling(boolean automatedRtcpHandling) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.automatedRtcpHandling = automatedRtcpHandling;
@@ -809,7 +953,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     }
 
     public void setTryToUpdateOnEverySdes(boolean tryToUpdateOnEverySdes) {
-        if (this.running) {
+        if (this.running.get()) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
         this.tryToUpdateOnEverySdes = tryToUpdateOnEverySdes;
@@ -821,5 +965,16 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     public long getSentPackets() {
         return this.sentPacketCounter.get();
+    }
+
+    public int getParticipantDatabaseCleanup() {
+        return participantDatabaseCleanup;
+    }
+
+    public void setParticipantDatabaseCleanup(int participantDatabaseCleanup) {
+        if (this.running.get()) {
+            throw new IllegalArgumentException("Cannot modify property after initialisation");
+        }
+        this.participantDatabaseCleanup = participantDatabaseCleanup;
     }
 }
