@@ -96,6 +96,7 @@ public class MultiParticipantSessionTest {
         RtpParticipant participant = RtpParticipant.createReceiver("localhost", 8000, 8001);
         participant.getInfo().setSsrc(6969);
         this.session = new MultiParticipantSession("id", 8, participant);
+        this.session.setDiscardOutOfOrder(true);
         assertTrue(this.session.init());
 
         final AtomicInteger counter = new AtomicInteger(0);

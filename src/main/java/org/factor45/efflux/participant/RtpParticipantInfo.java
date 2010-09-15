@@ -79,9 +79,9 @@ public class RtpParticipantInfo {
     public boolean updateFromSdesChunk(SdesChunk chunk) {
         boolean modified = false;
         if (this.ssrc != chunk.getSsrc()) {
+            this.ssrc = chunk.getSsrc();
             modified = true;
         }
-        this.ssrc = chunk.getSsrc();
         if (chunk.getItems() == null) {
             return modified;
         }
@@ -119,13 +119,13 @@ public class RtpParticipantInfo {
                     }
                     break;
                 case TOOL:
-                    if (this.willCauseModification(this.location, item.getValue())) {
+                    if (this.willCauseModification(this.tool, item.getValue())) {
                         this.setTool(item.getValue());
                         modified = true;
                     }
                     break;
                 case NOTE:
-                    if (this.willCauseModification(this.location, item.getValue())) {
+                    if (this.willCauseModification(this.note, item.getValue())) {
                         this.setNote(item.getValue());
                         modified = true;
                     }

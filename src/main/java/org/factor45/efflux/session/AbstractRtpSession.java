@@ -50,7 +50,6 @@ import org.jboss.netty.channel.socket.nio.NioDatagramChannelFactory;
 import org.jboss.netty.channel.socket.oio.OioDatagramChannelFactory;
 
 import java.net.SocketAddress;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -58,7 +57,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * @author <a:mailto="bruno.carvalho@wit-software.com" />Bruno de Carvalho</a>
@@ -67,7 +65,7 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     // constants ------------------------------------------------------------------------------------------------------
 
-    protected static final Logger LOG = Logger.getLogger(SingleParticipantSession.class);
+    protected static final Logger LOG = Logger.getLogger(AbstractRtpSession.class);
     protected static final String VERSION = "efflux_0.4_15092010";
 
     // configuration defaults -----------------------------------------------------------------------------------------
@@ -79,7 +77,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     protected static final int RECEIVE_BUFFER_SIZE = 1500;
     protected static final int MAX_COLLISIONS_BEFORE_CONSIDERING_LOOP = 3;
     protected static final boolean AUTOMATED_RTCP_HANDLING = true;
-    protected static final boolean UPDATE_DESTINATION_FROM_ORIGIN = true;
+    protected static final boolean TRY_TO_UPDATE_ON_EVERY_SDES = true;
 
     // configuration --------------------------------------------------------------------------------------------------
 
@@ -91,7 +89,7 @@ public abstract class AbstractRtpSession implements RtpSession {
     protected int receiveBufferSize;
     protected int maxCollisionsBeforeConsideringLoop;
     protected boolean automatedRtcpHandling;
-    protected boolean updateDestinationFromOrigin;
+    protected boolean tryToUpdateOnEverySdes;
 
     // internal vars --------------------------------------------------------------------------------------------------
 
@@ -108,7 +106,6 @@ public abstract class AbstractRtpSession implements RtpSession {
     protected DatagramChannel controlChannel;
     protected final AtomicInteger sequence;
     protected final AtomicBoolean sentOrReceivedPackets;
-    protected final ReentrantReadWriteLock lock;
     protected final AtomicInteger collisions;
     protected final AtomicLong sentByteCounter;
     protected final AtomicLong sentPacketCounter;
@@ -118,6 +115,10 @@ public abstract class AbstractRtpSession implements RtpSession {
     public AbstractRtpSession(String id, int payloadType, RtpParticipant local) {
         if ((payloadType < 0) || (payloadType > 127)) {
             throw new IllegalArgumentException("PayloadType must be in range [0;127]");
+        }
+
+        if (!local.isReceiver()) {
+            throw new IllegalArgumentException("Local participant must have its data & control addresses set");
         }
 
         this.id = id;
@@ -130,7 +131,6 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.eventListeners = new CopyOnWriteArrayList<RtpSessionEventListener>();
         this.sequence = new AtomicInteger(0);
         this.sentOrReceivedPackets = new AtomicBoolean(false);
-        this.lock = new ReentrantReadWriteLock();
         this.collisions = new AtomicInteger(0);
         this.sentPacketCounter = new AtomicLong(0);
         this.sentByteCounter = new AtomicLong(0);
@@ -141,7 +141,7 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.receiveBufferSize = RECEIVE_BUFFER_SIZE;
         this.maxCollisionsBeforeConsideringLoop = MAX_COLLISIONS_BEFORE_CONSIDERING_LOOP;
         this.automatedRtcpHandling = AUTOMATED_RTCP_HANDLING;
-        this.updateDestinationFromOrigin = UPDATE_DESTINATION_FROM_ORIGIN;
+        this.tryToUpdateOnEverySdes = TRY_TO_UPDATE_ON_EVERY_SDES;
     }
 
     // RtpSession -----------------------------------------------------------------------------------------------------
@@ -284,7 +284,7 @@ public abstract class AbstractRtpSession implements RtpSession {
 
     @Override
     public boolean addReceiver(RtpParticipant remoteParticipant) {
-        return remoteParticipant.getSsrc() != this.localParticipant.getSsrc() &&
+        return (remoteParticipant.getSsrc() != this.localParticipant.getSsrc()) &&
                this.participantDatabase.addReceiver(remoteParticipant);
     }
 
@@ -379,26 +379,27 @@ public abstract class AbstractRtpSession implements RtpSession {
         }
 
         // Associate the packet with a participant or create one.
-        RtpParticipant context = this.participantDatabase.getOrCreateParticipantFromDataPacket(origin, packet);
-        if (context == null) {
+        RtpParticipant participant = this.participantDatabase.getOrCreateParticipantFromDataPacket(origin, packet);
+        if (participant == null) {
             // Depending on database implementation, it may chose not to create anything, in which case this packet
             // must be discarded.
             return;
         }
 
         // Should the packet be discarded due to out of order SN?
-        if ((context.getLastSequenceNumber() >= packet.getSequenceNumber()) && this.discardOutOfOrder) {
-            LOG.trace("Discarded out of order packet (last SN was {}, packet SN was {}).",
-                      context.getLastSequenceNumber(), packet.getSequenceNumber());
+        if ((participant.getLastSequenceNumber() >= packet.getSequenceNumber()) && this.discardOutOfOrder) {
+            LOG.trace("Discarded out of order packet from {} in session with id {} (last SN was {}, packet SN was {}).",
+                      participant, this.id, participant.getLastSequenceNumber(), packet.getSequenceNumber());
             return;
         }
 
         // Update last SN for participant.
-        context.setLastSequenceNumber(packet.getSequenceNumber());
+        participant.setLastSequenceNumber(packet.getSequenceNumber());
+        participant.setLastDataOrigin(origin);
 
         // Finally, dispatch the event to the data listeners.
         for (RtpSessionDataListener listener : this.dataListeners) {
-            listener.dataPacketReceived(this, context.getInfo(), packet);
+            listener.dataPacketReceived(this, participant.getInfo(), packet);
         }
     }
 
@@ -474,7 +475,8 @@ public abstract class AbstractRtpSession implements RtpSession {
                 // must be discarded.
                 return;
             }
-            if (!participant.hasReceivedSdes()) {
+            if (!participant.hasReceivedSdes() || this.tryToUpdateOnEverySdes) {
+                participant.receivedSdes();
                 // If this participant wasn't created from an SDES packet, then update its participant's description.
                 if (participant.getInfo().updateFromSdesChunk(chunk)) {
                     for (RtpSessionEventListener listener : this.eventListeners) {
@@ -495,8 +497,8 @@ public abstract class AbstractRtpSession implements RtpSession {
                 }
             }
         }
-        LOG.trace("Participants with SSRCs {} sent BYE for RtpSession with id {} with reason '{}'.",
-                  packet.getSsrcList(), packet. getReasonForLeaving());
+        LOG.trace("Received BYE for participants with SSRCs {} in session with id '{}' (reason: '{}').",
+                  packet.getSsrcList(), this.id, packet. getReasonForLeaving());
     }
 
     // protected helpers ----------------------------------------------------------------------------------------------
@@ -592,45 +594,17 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.internalSendControl(compoundPacket);
     }
 
-    protected void leaveSession(long currentSsrc, String motive) {
+    protected void leaveSession(final long currentSsrc, String motive) {
         if (!this.automatedRtcpHandling) {
             return;
         }
-        List<CompoundControlPacket> byePackets = this.buildLeavePackets(currentSsrc, motive);
-        for (CompoundControlPacket byePacket : byePackets) {
-            this.internalSendControl(byePacket);
-        }
-    }
 
-    protected List<CompoundControlPacket> buildLeavePackets(final long currentSsrc, String motive) {
         final SourceDescriptionPacket sdesPacket = this.buildSdesPacket(currentSsrc);
         final ByePacket byePacket = new ByePacket();
         byePacket.addSsrc(currentSsrc);
         byePacket.setReasonForLeaving(motive);
 
-        this.lock.readLock().lock();
-        try {
-            // Strong estimate.
-            int participantCount = this.participantDatabase.getReceiverCount();
-            final List<CompoundControlPacket> compoundPackets = new ArrayList<CompoundControlPacket>(participantCount);
-            this.participantDatabase.doWithReceivers(new ParticipantOperation() {
-
-                @Override
-                public void doWithParticipant(RtpParticipant participant) throws Exception {
-                    AbstractReportPacket reportPacket = buildReportPacket(currentSsrc, participant);
-                    compoundPackets.add(new CompoundControlPacket(reportPacket, sdesPacket, byePacket));
-                }
-
-                @Override
-                public String toString() {
-                    return "buildLeavePackets() for session with id " + id;
-                }
-            });
-
-            return compoundPackets;
-        } finally {
-            this.lock.readLock().unlock();
-        }
+        this.internalSendControl(new CompoundControlPacket(sdesPacket, byePacket));
     }
 
     protected AbstractReportPacket buildReportPacket(long currentSsrc, RtpParticipant context) {
@@ -830,15 +804,15 @@ public abstract class AbstractRtpSession implements RtpSession {
         this.automatedRtcpHandling = automatedRtcpHandling;
     }
 
-    public boolean isUpdateDestinationFromOrigin() {
-        return updateDestinationFromOrigin;
+    public boolean isTryToUpdateOnEverySdes() {
+        return tryToUpdateOnEverySdes;
     }
 
-    public void setUpdateDestinationFromOrigin(boolean updateDestinationFromOrigin) {
+    public void setTryToUpdateOnEverySdes(boolean tryToUpdateOnEverySdes) {
         if (this.running) {
             throw new IllegalArgumentException("Cannot modify property after initialisation");
         }
-        this.updateDestinationFromOrigin = updateDestinationFromOrigin;
+        this.tryToUpdateOnEverySdes = tryToUpdateOnEverySdes;
     }
 
     public long getSentBytes() {

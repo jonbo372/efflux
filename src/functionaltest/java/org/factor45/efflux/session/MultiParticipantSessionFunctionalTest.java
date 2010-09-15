@@ -17,6 +17,7 @@
 package org.factor45.efflux.session;
 
 import org.factor45.efflux.packet.DataPacket;
+import org.factor45.efflux.participant.RtpParticipant;
 import org.factor45.efflux.participant.RtpParticipantInfo;
 import org.junit.After;
 import org.junit.Test;
@@ -51,13 +52,13 @@ public class MultiParticipantSessionFunctionalTest {
     @Test
     public void testDeliveryToAllParticipants() throws Exception {
         this.sessions = new MultiParticipantSession[N];
-        RtpParticipantInfo[] p = new RtpParticipantInfo[N];
         final AtomicInteger[] counters = new AtomicInteger[N];
         final CountDownLatch latch = new CountDownLatch(N);
 
         for (byte i = 0; i < N; i++) {
-            p[i] = new RtpParticipantInfo("127.0.0.1", 10000 + (i * 2), 20001 + (i * 2), i);
-            this.sessions[i] = new MultiParticipantSession("session" + i, 8, p[i]);
+            RtpParticipant participant = RtpParticipant
+                    .createReceiver(new RtpParticipantInfo(i), "127.0.0.1", 10000 + (i * 2), 20001 + (i * 2));
+            this.sessions[i] = new MultiParticipantSession("session" + i, 8, participant);
             assertTrue(this.sessions[i].init());
             final AtomicInteger counter = new AtomicInteger();
             counters[i] = counter;
@@ -66,7 +67,7 @@ public class MultiParticipantSessionFunctionalTest {
                 @Override
                 public void dataPacketReceived(RtpSession session, RtpParticipantInfo participant, DataPacket packet) {
                     System.err.println(session.getId() + " received data from " + participant + ": " + packet);
-                    if (counter.incrementAndGet() == (N - 1)) {
+                    if (counter.incrementAndGet() == ((N - 1) * 2)) {
                         // Release the latch once all N-1 messages (because it wont receive the message it sends) are
                         // received.
                         latch.countDown();
@@ -82,18 +83,25 @@ public class MultiParticipantSessionFunctionalTest {
                     continue;
                 }
 
-                assertTrue(this.sessions[i].addParticipant(p[j]));
+                // You can NEVER add the same participant to two distinct sessions otherwise you'll ruin it (as both
+                // will be messing in the same participant).
+                RtpParticipant participant = RtpParticipant
+                    .createReceiver(new RtpParticipantInfo(j), "127.0.0.1", 10000 + (j * 2), 20001 + (j * 2));
+                System.err.println("Adding " + participant + " to session " + this.sessions[i].getId());
+                assertTrue(this.sessions[i].addReceiver(participant));
             }
         }
 
+        byte[] deadbeef = {(byte) 0xde, (byte) 0xad, (byte) 0xbe, (byte) 0xef};
         for (byte i = 0; i < N; i++) {
-            this.sessions[i].sendData(new byte[]{(byte) 0xde, (byte) 0xad, (byte) 0xbe, (byte) 0xef}, i, false);
+            assertTrue(this.sessions[i].sendData(deadbeef, 0x45, false));
+            assertTrue(this.sessions[i].sendData(deadbeef, 0x45, false));
         }
 
         latch.await(5000L, TimeUnit.MILLISECONDS);
 
         for (byte i = 0; i < N; i++) {
-            assertEquals(N - 1, counters[i].get());
+            assertEquals(((N - 1) * 2), counters[i].get());
         }
     }
 }

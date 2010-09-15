@@ -16,18 +16,24 @@
 
 package org.factor45.efflux.participant;
 
+import org.factor45.efflux.logging.Logger;
 import org.factor45.efflux.packet.DataPacket;
 import org.factor45.efflux.packet.SdesChunk;
 
 import java.net.SocketAddress;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * @author <a:mailto="bruno.carvalho@wit-software.com" />Bruno de Carvalho</a>
  */
 public class SingleParticipantDatabase implements ParticipantDatabase {
+
+    // constants ------------------------------------------------------------------------------------------------------
+
+    private static final Logger LOG = Logger.getLogger(SingleParticipantDatabase.class);
 
     // configuration --------------------------------------------------------------------------------------------------
 
@@ -36,7 +42,7 @@ public class SingleParticipantDatabase implements ParticipantDatabase {
 
     // constructors ---------------------------------------------------------------------------------------------------
 
-    public SingleParticipantDatabase(String id, RtpParticipant participant) {
+    public SingleParticipantDatabase(String id) {
         this.id = id;
     }
 
@@ -54,7 +60,10 @@ public class SingleParticipantDatabase implements ParticipantDatabase {
 
     @Override
     public Map<Long, RtpParticipant> getMembers() {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
+        // Could be optimised, but then again this'll be used so little...
+        Map<Long, RtpParticipant> map = new HashMap<Long, RtpParticipant>(1);
+        map.put(this.participant.getSsrc(), this.participant);
+        return map;
     }
 
     @Override
@@ -62,7 +71,7 @@ public class SingleParticipantDatabase implements ParticipantDatabase {
         try {
             operation.doWithParticipant(this.participant);
         } catch (Exception e) {
-            e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+            LOG.error("Failed to perform operation {} on remote participant {}.", e, operation, this.participant);
         }
     }
 
@@ -71,7 +80,7 @@ public class SingleParticipantDatabase implements ParticipantDatabase {
         try {
             operation.doWithParticipant(this.participant);
         } catch (Exception e) {
-            e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+            LOG.error("Failed to perform operation {} on remote participant {}.", e, operation, this.participant);
         }
     }
 
@@ -125,5 +134,11 @@ public class SingleParticipantDatabase implements ParticipantDatabase {
     @Override
     public void cleanup() {
         // Nothing to do here.
+    }
+
+    // getters & setters ----------------------------------------------------------------------------------------------
+
+    public void setParticipant(RtpParticipant remoteParticipant) {
+        this.participant = remoteParticipant;
     }
 }

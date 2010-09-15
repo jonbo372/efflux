@@ -114,6 +114,7 @@ public class RtpParticipant {
         RtpParticipant participant = new RtpParticipant(new RtpParticipantInfo());
         participant.lastControlOrigin = origin;
         participant.getInfo().updateFromSdesChunk(chunk);
+        participant.receivedSdes();
 
         return participant;
     }

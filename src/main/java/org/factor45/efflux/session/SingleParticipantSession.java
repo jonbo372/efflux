@@ -21,7 +21,6 @@ import org.factor45.efflux.packet.ControlPacket;
 import org.factor45.efflux.packet.DataPacket;
 import org.factor45.efflux.participant.ParticipantDatabase;
 import org.factor45.efflux.participant.RtpParticipant;
-import org.factor45.efflux.participant.RtpParticipantInfo;
 import org.factor45.efflux.participant.SingleParticipantDatabase;
 
 import java.net.SocketAddress;
@@ -50,11 +49,13 @@ public class SingleParticipantSession extends AbstractRtpSession {
 
     // configuration defaults -----------------------------------------------------------------------------------------
 
+    private static final boolean SEND_TO_LAST_ORIGIN = true;
     private static final boolean IGNORE_FROM_UNKNOWN_SSRC = true;
 
     // configuration --------------------------------------------------------------------------------------------------
 
     private final RtpParticipant receiver;
+    private boolean sendToLastOrigin;
     private boolean ignoreFromUnknownSsrc;
 
     // internal vars --------------------------------------------------------------------------------------------------
@@ -69,8 +70,10 @@ public class SingleParticipantSession extends AbstractRtpSession {
         if (!remoteParticipant.isReceiver()) {
             throw new IllegalArgumentException("Remote participant must be a receiver (data & control addresses set)");
         }
+        ((SingleParticipantDatabase) this.participantDatabase).setParticipant(remoteParticipant);
         this.receiver = remoteParticipant;
         this.receivedPackets = new AtomicBoolean(false);
+        this.sendToLastOrigin = SEND_TO_LAST_ORIGIN;
         this.ignoreFromUnknownSsrc = IGNORE_FROM_UNKNOWN_SSRC;
     }
 
@@ -112,13 +115,22 @@ public class SingleParticipantSession extends AbstractRtpSession {
 
     @Override
     protected ParticipantDatabase createDatabase() {
-        return new SingleParticipantDatabase(this.id, this.receiver);
+        return new SingleParticipantDatabase(this.id);
     }
 
     @Override
     protected void internalSendData(DataPacket packet) {
         try {
-            this.writeToData(packet, this.receiver.getDataDestination());
+            // This assumes that the sender is sending is sending from the same ports where its expecting to receive.
+            // Can be dangerous if the other end fully respects the RFC and supports ICE, but this is nearly the only
+            // workaround that will work if the other end doesn't support ICE and is behind a NAT.
+            SocketAddress destination;
+            if (this.sendToLastOrigin && (this.receiver.getLastDataOrigin() != null)) {
+                destination = this.receiver.getLastDataOrigin();
+            } else {
+                destination = this.receiver.getDataDestination();
+            }
+            this.writeToData(packet, destination);
             this.sentOrReceivedPackets.set(true);
         } catch (Exception e) {
             LOG.error("Failed to send {} to {} in session with id {}.", this.id, this.receiver.getInfo());
@@ -128,7 +140,16 @@ public class SingleParticipantSession extends AbstractRtpSession {
     @Override
     protected void internalSendControl(ControlPacket packet) {
         try {
-            this.writeToControl(packet, this.receiver.getControlDestination());
+            // This assumes that the sender is sending is sending from the same ports where its expecting to receive.
+            // Can be dangerous if the other end fully respects the RFC and supports ICE, but this is nearly the only
+            // workaround that will work if the other end doesn't support ICE and is behind a NAT.
+            SocketAddress destination;
+            if (this.sendToLastOrigin && (this.receiver.getLastControlOrigin() != null)) {
+                destination = this.receiver.getLastControlOrigin();
+            } else {
+                destination = this.receiver.getControlDestination();
+            }
+            this.writeToControl(packet, destination);
             this.sentOrReceivedPackets.set(true);
         } catch (Exception e) {
             LOG.error("Failed to send RTCP packet to {} in session with id {}.",
@@ -166,8 +187,19 @@ public class SingleParticipantSession extends AbstractRtpSession {
 
     // getters & setters ----------------------------------------------------------------------------------------------
 
-    public RtpParticipantInfo getRemoteParticipant() {
-        return this.receiver.getInfo();
+    public RtpParticipant getRemoteParticipant() {
+        return this.receiver;
+    }
+
+    public boolean isSendToLastOrigin() {
+        return sendToLastOrigin;
+    }
+
+    public void setSendToLastOrigin(boolean sendToLastOrigin) {
+        if (this.running) {
+            throw new IllegalArgumentException("Cannot modify property after initialisation");
+        }
+        this.sendToLastOrigin = sendToLastOrigin;
     }
 
     public boolean isIgnoreFromUnknownSsrc() {
@@ -175,6 +207,9 @@ public class SingleParticipantSession extends AbstractRtpSession {
     }
 
     public void setIgnoreFromUnknownSsrc(boolean ignoreFromUnknownSsrc) {
+        if (this.running) {
+            throw new IllegalArgumentException("Cannot modify property after initialisation");
+        }
         this.ignoreFromUnknownSsrc = ignoreFromUnknownSsrc;
     }
 }
