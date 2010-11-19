@@ -8,7 +8,7 @@
   <packaging>jar</packaging>
 
   <name>efflux</name>
-  <url>http://efflux.factor45.org</url>
+  <url>http://efflux.biasedbit.com</url>
   <description>
     Missing description
   </description>
@@ -16,8 +16,8 @@
   <developers>
     <developer>
       <name>Bruno de Carvalho</name>
-      <email>bruno@factor45.org</email>
-      <url>http://bruno.factor45.org</url>
+      <email>bruno@biasedbit.com</email>
+      <url>http://bruno.biasedbit.com</url>
     </developer>
   </developers>
 
