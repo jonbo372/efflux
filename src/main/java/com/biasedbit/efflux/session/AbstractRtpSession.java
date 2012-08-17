@@ -67,7 +67,6 @@ import java.util.Collections;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Collection;
-import java.util.ArrayList;
 /**
  * @author <a:mailto="bruno.carvalho@wit-software.com" />Bruno de Carvalho</a>
  */
@@ -94,7 +93,6 @@ public abstract class AbstractRtpSession implements RtpSession, TimerTask {
     // configuration --------------------------------------------------------------------------------------------------
 
     protected final String id;
-    //protected final int payloadTyp;
     protected final Set<Integer> payloadTypes = new HashSet<Integer>();
     protected final HashedWheelTimer timer;
     protected final OrderedMemoryAwareThreadPoolExecutor executor;
