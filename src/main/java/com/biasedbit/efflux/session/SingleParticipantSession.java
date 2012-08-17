@@ -26,6 +26,8 @@ import org.jboss.netty.handler.execution.OrderedMemoryAwareThreadPoolExecutor;
 import org.jboss.netty.util.HashedWheelTimer;
 
 import java.net.SocketAddress;
+import java.util.Collections;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -80,11 +82,17 @@ public class SingleParticipantSession extends AbstractRtpSession {
                                     RtpParticipant remoteParticipant, HashedWheelTimer timer) {
         this(id, payloadType, localParticipant, remoteParticipant, timer, null);
     }
-
+    
     public SingleParticipantSession(String id, int payloadType, RtpParticipant localParticipant,
+    								RtpParticipant remoteParticipant, HashedWheelTimer timer,
+    								OrderedMemoryAwareThreadPoolExecutor executor) {
+    	this(id, Collections.singleton(payloadType), localParticipant, remoteParticipant, timer, executor);
+    }
+
+    public SingleParticipantSession(String id, Collection<Integer> payloadTypes, RtpParticipant localParticipant,
                                     RtpParticipant remoteParticipant, HashedWheelTimer timer,
                                     OrderedMemoryAwareThreadPoolExecutor executor) {
-        super(id, payloadType, localParticipant, timer, executor);
+        super(id, payloadTypes, localParticipant, timer, executor);
         if (!remoteParticipant.isReceiver()) {
             throw new IllegalArgumentException("Remote participant must be a receiver (data & control addresses set)");
         }

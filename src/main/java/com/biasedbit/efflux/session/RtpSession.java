@@ -22,7 +22,7 @@ import com.biasedbit.efflux.packet.CompoundControlPacket;
 import com.biasedbit.efflux.packet.ControlPacket;
 import com.biasedbit.efflux.packet.DataPacket;
 import com.biasedbit.efflux.participant.RtpParticipant;
-
+import java.util.Set;
 import java.util.Map;
 
 /**
@@ -32,7 +32,7 @@ public interface RtpSession extends DataPacketReceiver, ControlPacketReceiver {
 
     String getId();
 
-    int getPayloadType();
+    Set<Integer> getPayloadType();
 
     boolean init();
 
