@@ -101,7 +101,7 @@ public class DataPacket {
         // Read extension headers & data
         if (extension) {
             packet.extensionHeaderData = buffer.readShort();
-            packet.extensionData = new byte[buffer.readUnsignedShort()];
+            packet.extensionData = new byte[buffer.readUnsignedShort() * 4];
             buffer.readBytes(packet.extensionData);
         }
 
