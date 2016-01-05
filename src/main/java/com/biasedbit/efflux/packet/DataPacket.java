@@ -98,13 +98,6 @@ public class DataPacket {
         packet.timestamp = buffer.readUnsignedInt();
         packet.ssrc = buffer.readUnsignedInt();
 
-        // Read extension headers & data
-        if (extension) {
-            packet.extensionHeaderData = buffer.readShort();
-            packet.extensionData = new byte[buffer.readUnsignedShort() * 4];
-            buffer.readBytes(packet.extensionData);
-        }
-
         // Read CCRC's
         if (contributingSourcesCount > 0) {
             packet.contributingSourceIds = new ArrayList<Long>(contributingSourcesCount);
@@ -112,6 +105,13 @@ public class DataPacket {
                 long contributingSource = buffer.readUnsignedInt();
                 packet.contributingSourceIds.add(contributingSource);
             }
+        }
+
+        // Read extension headers & data
+        if (extension) {
+            packet.extensionHeaderData = buffer.readShort();
+            packet.extensionData = new byte[buffer.readUnsignedShort() * 4];
+            buffer.readBytes(packet.extensionData);
         }
 
         if (!padding) {
@@ -178,18 +178,18 @@ public class DataPacket {
         buffer.writeInt((int) packet.timestamp);
         buffer.writeInt((int) packet.ssrc);
 
-        // Write extension headers & data
-        if (packet.hasExtension()) {
-            buffer.writeShort(packet.extensionHeaderData);
-            buffer.writeShort(packet.extensionData.length / 4);
-            buffer.writeBytes(packet.extensionData);
-        }
-
         // Write CCRC's
         if (packet.getContributingSourcesCount() > 0) {
             for (Long contributingSourceId : packet.getContributingSourceIds()) {
                 buffer.writeInt(contributingSourceId.intValue());
             }
+        }
+
+        // Write extension headers & data
+        if (packet.hasExtension()) {
+            buffer.writeShort(packet.extensionHeaderData);
+            buffer.writeShort(packet.extensionData.length / 4);
+            buffer.writeBytes(packet.extensionData);
         }
 
         // Write RTP data
