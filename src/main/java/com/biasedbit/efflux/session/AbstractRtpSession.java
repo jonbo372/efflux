@@ -86,6 +86,8 @@ public abstract class AbstractRtpSession implements RtpSession, TimerTask {
     protected static final boolean AUTOMATED_RTCP_HANDLING = true;
     protected static final boolean TRY_TO_UPDATE_ON_EVERY_SDES = true;
     protected static final int PARTICIPANT_DATABASE_CLEANUP = 10;
+    protected static final int SEQUENCE_NUMBER_WRAP_BOUND = 32767;
+    protected static final int MAX_SEQUENCE_NUMBER_FOR_WRAP = 1000;
 
     // configuration --------------------------------------------------------------------------------------------------
 
@@ -103,6 +105,8 @@ public abstract class AbstractRtpSession implements RtpSession, TimerTask {
     protected boolean automatedRtcpHandling;
     protected boolean tryToUpdateOnEverySdes;
     protected int participantDatabaseCleanup;
+    protected int sequenceNumberWrapBound;
+    protected int maxSequenceNumberForWrap;
 
     // internal vars --------------------------------------------------------------------------------------------------
 
@@ -182,6 +186,8 @@ public abstract class AbstractRtpSession implements RtpSession, TimerTask {
         this.automatedRtcpHandling = AUTOMATED_RTCP_HANDLING;
         this.tryToUpdateOnEverySdes = TRY_TO_UPDATE_ON_EVERY_SDES;
         this.participantDatabaseCleanup = PARTICIPANT_DATABASE_CLEANUP;
+        this.sequenceNumberWrapBound = SEQUENCE_NUMBER_WRAP_BOUND;
+        this.maxSequenceNumberForWrap = MAX_SEQUENCE_NUMBER_FOR_WRAP;
     }
 
     // RtpSession -----------------------------------------------------------------------------------------------------
@@ -464,7 +470,7 @@ public abstract class AbstractRtpSession implements RtpSession, TimerTask {
         }
 
         // Should the packet be discarded due to out of order SN?
-        if ((participant.getLastSequenceNumber() >= packet.getSequenceNumber()) && this.discardOutOfOrder) {
+        if (isSequenceNumberOutOfOrder(participant.getLastSequenceNumber(), packet.getSequenceNumber()) && this.discardOutOfOrder) {
             LOG.trace("Discarded out of order packet from {} in session with id {} (last SN was {}, packet SN was {}).",
                       participant, this.id, participant.getLastSequenceNumber(), packet.getSequenceNumber());
             return;
@@ -478,6 +484,14 @@ public abstract class AbstractRtpSession implements RtpSession, TimerTask {
         for (RtpSessionDataListener listener : this.dataListeners) {
             listener.dataPacketReceived(this, participant.getInfo(), packet);
         }
+    }
+
+    private boolean isSequenceNumberOutOfOrder(int previousSequenceNumber, int sequenceNumber) {
+    	if (previousSequenceNumber >= sequenceNumberWrapBound && sequenceNumber <= maxSequenceNumberForWrap) {
+    		return false;
+    	} else {
+    		return previousSequenceNumber >= sequenceNumber;
+    	}
     }
 
     // ControlPacketReceiver ------------------------------------------------------------------------------------------
